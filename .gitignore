@@ -22,6 +22,9 @@ env/
 .ipynb_checkpoints/
 *.ipynb_metadata
 
+# Node / Frontend
+node_modules/
+
 # IDE
 .vscode/
 .idea/
@@ -31,7 +34,8 @@ env/
 
 # Environment
 .env
-.env.*
+.env.local
+!.env.example
 
 # Submissions - keep locally, push intentionally
 # submissions/*
