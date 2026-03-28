@@ -6,11 +6,11 @@
 - Demo runs on localhost: FastAPI backend + React frontend.
 
 ## Competition Rules
-- Pick exactly ONE track: Education, Sustainability & Infrastructure, Healthcare & Wellness, Finance & Economics
+- Track: **Finance & Economics**
 - Submit: `.ipynb` notebook + `.pptx`/`.pdf` slideshow via Google Form
 - Notebook MUST follow 7-section structure (problem → data → cleaning → EDA → stats/model → results → limitations)
 - Last notebook cell MUST be "Dataset Citations (MLA 8)" with full citations
-- File naming: `2kim_[track]_notebook.ipynb`, `2kim_[track]_slides.pptx`
+- File naming: `2kim_finance_notebook.ipynb`, `2kim_finance_slides.pptx`
 - AI tools allowed; team responsible for accuracy — no fabricated results
 - Judged by SBU professors. Scoring (100pts): Analysis & Evidence (25), Data Quality (20), Research Question (15), Technical Rigor (15), Presentation (15), Limitations & Ethics (10)
 - Tiebreaker priority: Analysis & Evidence → Data Quality → Limitations & Ethics
