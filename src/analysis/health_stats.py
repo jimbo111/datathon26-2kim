@@ -88,7 +88,7 @@ def run_phase2(master: pd.DataFrame) -> dict:
             c = (non_desert > median_diabetes).sum()  # non-desert + high diabetes
             d = (non_desert <= median_diabetes).sum()  # non-desert + low diabetes
 
-            if b > 0 and c > 0 and d > 0:
+            if a > 0 and b > 0 and c > 0 and d > 0:
                 odds_ratio = (a * d) / (b * c)
                 se_log_or = np.sqrt(1/a + 1/b + 1/c + 1/d)
                 ci_low = np.exp(np.log(odds_ratio) - 1.96 * se_log_or)

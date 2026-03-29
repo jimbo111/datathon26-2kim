@@ -137,6 +137,8 @@ def download_places() -> pd.DataFrame:
             break
         offset += limit
 
+    if not frames:
+        raise RuntimeError("CDC PLACES download returned no data. Check network connection.")
     df = pd.concat(frames, ignore_index=True)
     PLACES_CACHE.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(PLACES_CACHE, index=False)
@@ -225,6 +227,8 @@ def download_acs(api_key: Optional[str] = None) -> pd.DataFrame:
         except Exception as e:
             console.print(f"[red]  state {st} failed: {e}[/]")
 
+    if not frames:
+        raise RuntimeError("ACS download returned no data. Check network/Census API.")
     df = pd.concat(frames, ignore_index=True)
     ACS_CACHE.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(ACS_CACHE, index=False)
@@ -298,6 +302,8 @@ def download_life_expectancy() -> pd.DataFrame:
             break
         offset += limit
 
+    if not frames:
+        raise RuntimeError("CDC Life Expectancy download returned no data. Check network connection.")
     df = pd.concat(frames, ignore_index=True)
     LIFE_EXP_CACHE.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(LIFE_EXP_CACHE, index=False)
