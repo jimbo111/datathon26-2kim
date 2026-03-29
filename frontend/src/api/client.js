@@ -45,4 +45,14 @@ export const getBarLifeExpectancyIncome = () =>
 export const getHealthSummary = () =>
   api.get("/charts/health/summary").then((r) => r.data);
 
+// --- Phase 4 + 5A ---
+export const getHeatmapIncomeRaceDiabetes = () =>
+  api.get("/charts/health/heatmap/income-race-diabetes").then((r) => r.data);
+export const getChoroplethHDI = () =>
+  api.get("/charts/health/choropleth/hdi").then((r) => r.data);
+export const getPathDiagram = () =>
+  api.get("/charts/health/path-diagram").then((r) => r.data);
+export const getHdiRankedTracts = (topN = 10) =>
+  api.get("/data/hdi-ranked", { params: { top_n: topN } }).then((r) => r.data);
+
 export default api;

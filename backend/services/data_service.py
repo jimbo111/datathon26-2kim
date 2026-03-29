@@ -165,3 +165,20 @@ def _safe_sample(s: pd.Series) -> str | None:
         text = str(val)
         return text[:80] if len(text) > 80 else text
     return None
+
+
+# ── Singleton ──
+
+_instance: DataService | None = None
+
+
+def get_data_service() -> DataService:
+    """Return a shared DataService instance, auto-loading master.parquet if available."""
+    global _instance
+    if _instance is None:
+        _instance = DataService()
+        try:
+            _instance.load_master()
+        except FileNotFoundError:
+            pass  # master.parquet not built yet — will use sample data fallback
+    return _instance

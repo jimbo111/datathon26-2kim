@@ -3,10 +3,10 @@
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
-from backend.services.data_service import DataService
+from backend.services.data_service import get_data_service
 
 router = APIRouter()
-data_svc = DataService()
+data_svc = get_data_service()
 
 
 @router.get("/datasets")

@@ -101,3 +101,18 @@ async def bar_life_expectancy_income():
 @router.get("/health/summary")
 async def health_summary():
     return JSONResponse(content=charts.health_summary_table())
+
+
+@router.get("/health/heatmap/income-race-diabetes")
+async def heatmap_income_race_diabetes():
+    return JSONResponse(content=charts.heatmap_income_race_diabetes())
+
+
+@router.get("/health/choropleth/hdi")
+async def choropleth_hdi():
+    return JSONResponse(content=charts.choropleth_hdi())
+
+
+@router.get("/health/path-diagram")
+async def path_diagram():
+    return JSONResponse(content=charts.path_diagram())
