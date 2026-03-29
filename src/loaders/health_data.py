@@ -80,11 +80,13 @@ def load_usda() -> pd.DataFrame:
     download_usda()
 
     xlsx = list(USDA_DIR.rglob("*.xlsx"))
-    csv = list(USDA_DIR.rglob("*.csv"))
+    csv = sorted(USDA_DIR.rglob("*.csv"), key=lambda f: f.stat().st_size, reverse=True)
     if xlsx:
         console.print(f"[cyan]Reading {xlsx[0].name} (may take ~30s)...[/]")
         df = pd.read_excel(xlsx[0], sheet_name=0, engine="openpyxl")
     elif csv:
+        # Pick the largest CSV (skip ReadMe.csv, VariableLookup.csv, etc.)
+        console.print(f"[cyan]Reading {csv[0].name}...[/]")
         df = pd.read_csv(csv[0])
     else:
         raise FileNotFoundError(f"No data files in {USDA_DIR}")
