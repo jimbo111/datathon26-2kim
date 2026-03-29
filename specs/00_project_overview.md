@@ -15,11 +15,13 @@
 
 ## Research Question
 
+> **Plain English:** Does the current AI rally look like the dot-com bubble — and how similar is it across five independent dimensions?
+
 > **Is the NVIDIA-led AI equity rally of 2023-2026 structurally analogous to the Cisco-led dot-com bubble of 1998-2001, and if so, at what stage of the bubble lifecycle are we today?**
 
 Sub-questions (each maps to one data layer):
 
-1. **Price dynamics**: How closely do NVDA's 2023-2026 returns track CSCO's 1998-2001 returns when time-aligned and normalized? (Layer 1)
+1. **Price dynamics**: How closely do NVDA's 2023-2026 returns track CSCO's 1998-2001 returns when time-aligned and normalized? Include Nortel Networks (NT) as a non-survivor dot-com analog to address survivorship bias. (Layer 1)
 2. **Fundamental backing**: Does NVDA's current valuation have stronger fundamental support (revenue growth, free cash flow, R&D yield) than CSCO had at comparable price multiples? (Layer 2)
 3. **Concentration risk**: Has AI-driven market concentration in the S&P 500 reached levels comparable to the late-1990s tech concentration? (Layer 3)
 4. **Macro environment**: Are the macro conditions enabling the AI rally (loose monetary policy, credit expansion, yield curve shape) structurally similar to 1998-2001? (Layer 4)
@@ -88,7 +90,7 @@ The ML pipeline consumes features from all 5 layers and outputs:
 
 | # | Source | API / Library | What It Provides | Ticker/Series | Time Range | Granularity |
 |---|---|---|---|---|---|---|
-| 1 | Yahoo Finance | `yfinance` | OHLCV price data, market cap | NVDA, CSCO, ^GSPC, ^SPXEW (or RSP ETF) | CSCO: 1996-01 to 2003-12; NVDA: 2021-01 to 2026-03 | Daily |
+| 1 | Yahoo Finance | `yfinance` | OHLCV price data, market cap | NVDA, CSCO, NT (Nortel Networks, non-survivor analog), ^GSPC, ^SPXEW (or RSP ETF) | CSCO: 1996-01 to 2003-12; NVDA: 2021-01 to 2026-03; NT: 1997-01 to 2009-01 (delisting) | Daily |
 | 2 | Yahoo Finance | `yfinance` `.quarterly_financials`, `.quarterly_balance_sheet`, `.quarterly_cashflow` | Revenue, net income, FCF, total debt, R&D expense, total assets | NVDA, CSCO | Same as above | Quarterly |
 | 3 | FRED | `fredapi` / `requests` | Fed funds rate, M2 money supply, BAA-AAA credit spread, 10Y-2Y yield curve, GDP, CPI | FEDFUNDS, M2SL, BAAFFM, T10Y2Y, GDP, CPIAUCSL | 1996-01 to 2026-03 | Monthly (some quarterly) |
 | 4 | Alpha Vantage | `requests` (REST) | S&P 500 constituent weights, sector breakdowns (backup for concentration data) | S&P 500 constituents | Current snapshot + historical where available | Quarterly |
@@ -109,6 +111,10 @@ REDDIT_CLIENT_ID=<your_id>           # https://www.reddit.com/prefs/apps
 REDDIT_CLIENT_SECRET=<your_secret>
 REDDIT_USER_AGENT=datathon2026:v1.0 (by /u/<username>)
 ```
+
+### Data Caching Convention
+
+> **Cache-or-call pattern required for ALL API calls.** Every API call must follow: `if Path("data/raw/<file>.parquet").exists(): load from cache; else: call API, cache result, return data`. This pattern must be enforced in `src/loaders.py` and used consistently in every notebook cell that fetches data. A notebook that fails because an API is rate-limited or down during judging is a catastrophic failure.
 
 ### Key API Endpoints
 
@@ -176,9 +182,13 @@ Step 2.3  Concentration metrics:
 Step 2.4  Macro feature engineering:
           - Rate regime: classify Fed funds as tightening/neutral/easing (12-month delta)
           - M2 growth rate (YoY %)
+          - GDP YoY growth: apply pct_change(periods=4) to the RAW quarterly GDP series
+            (before any forward-fill to monthly). FRED GDP is already annualized quarterly,
+            so pct_change(periods=4) gives true YoY growth. Then merge to monthly.
+            Do NOT use pct_change(periods=12) on forward-filled monthly data.
           - Credit spread z-score (rolling 5-year mean/std)
           - Yield curve inversion flag (T10Y2Y < 0)
-          - Columns: [date, fed_rate, fed_regime, m2_yoy, credit_spread_z, yield_curve, yc_inverted]
+          - Columns: [date, fed_rate, fed_regime, m2_yoy, gdp_yoy, credit_spread_z, yield_curve, yc_inverted]
 
 Step 2.5  Sentiment scores:
           - Google Trends: normalize 0-100 scale, compute rolling 4-week momentum
@@ -202,7 +212,7 @@ Step 3.1  Layer 1 -- Price overlay chart:
           - X-axis: "Trading days since rally start"
           - Annotate key events: CSCO peak (Mar 2000), NVDA key dates
           - Chart type: Plotly line chart with Plotly `add_vrect` for NBER recession
-          - Statistical test: Pearson correlation of daily returns in matching windows
+          - Statistical test: DTW similarity score as primary quantitative measure; Pearson/Spearman correlation of log-returns as secondary (applied to detrended log-returns aligned by days_from_breakout, not price levels)
 
 Step 3.2  Layer 2 -- Fundamentals comparison:
           - Side-by-side bar charts: P/E, P/S, FCF yield at comparable rally stages
@@ -235,6 +245,14 @@ Step 3.6  Correlation matrix:
           - Heatmap of all engineered features from master DataFrame
           - Highlight cross-layer correlations (e.g., sentiment vs price momentum)
           - Chart type: Seaborn clustermap or Plotly heatmap
+
+Step 3.7  Multiple comparisons correction:
+          - Collect all p-values from Steps 3.1-3.5 into a pre-analysis table
+          - Apply Benjamini-Hochberg (FDR) correction across the full set of tests
+            using `statsmodels.stats.multitest.multipletests(pvalues, method='fdr_bh')`
+          - Report both raw p-values and BH-adjusted p-values for every test
+          - Downgrade any finding whose adjusted p-value > 0.05 from "statistically
+            significant" to "suggestive pattern"
 ```
 
 ### Phase 4: Statistical Modeling & ML (~Day 3-4)
@@ -304,27 +322,31 @@ Step 5.6  Build slideshow from notebook visuals
 | 4 | `## 4. Exploratory Data Analysis` | All Layer 1-5 charts, correlation matrix, descriptive statistics | Analysis & Evidence (25pts) |
 | 5 | `## 5. Statistical Modeling & Machine Learning` | DTW, regime classifier, SHAP, robustness checks | Analysis & Evidence (25pts), Technical Rigor (15pts) |
 | 6 | `## 6. Results & Discussion` | Bubble scorecard, narrative answers to sub-questions, key findings | Presentation Clarity (15pts) |
+| 6.5 | `### Executive Summary` | **Required cell immediately after Section 6.** Top 3 findings in 3 sentences (e.g., DTW similarity score, P/E divergence, concentration level). This is what judges will actually read. | Presentation Clarity (15pts) |
 | 7 | `## 7. Limitations, Ethics & Future Work` | Data gaps, correlation vs causation, model assumptions, ethical considerations | Limitations (10pts) |
 | 8 | `## Dataset Citations (MLA 8)` | Full MLA 8 citations for every dataset | Required (mandatory) |
 
-### Slideshow Sections
+### Slideshow Sections (16 slides: 1 title + 14 content + 1 close, plus 2 backup)
 
 | Slide # | Title | Content |
 |---|---|---|
 | 1 | Title slide | Project title, team, track, date |
-| 2 | The Hook | "NVIDIA in 2025 looks a lot like Cisco in 1999" -- side-by-side price chart |
-| 3 | Research Question | Crisp question + hypothesis |
-| 4 | Data & Methods | Data sources table + pipeline diagram |
-| 5-6 | Price Overlay | Layer 1 chart + Pearson correlation stat |
-| 7-8 | Fundamentals | Layer 2 bar charts + key insight |
-| 9 | Concentration Risk | Layer 3 area chart |
-| 10 | Macro Environment | Layer 4 2x2 panel |
-| 11 | Sentiment | Layer 5 radar + Google Trends |
-| 12 | ML Results | Regime classification + DTW + feature importance |
-| 13 | Bubble Scorecard | Summary table with traffic lights |
-| 14 | Limitations & Ethics | Honest caveats |
-| 15 | Conclusion | "So are we in a bubble?" -- nuanced answer |
-| 16 | References | MLA 8 citations |
+| 2 | The Hook | NVDA (green) vs CSCO (coral red) price overlay + Nortel (gray dashed) |
+| 3 | Research Framework | Five-layer diagram, one-line question per layer |
+| 4 | Data & Methods | Data sources table, methodology summary (15 sec) |
+| 5 | P/E Comparison (Bull) | Layer 2 P/E chart, CSCO 200x vs NVDA [X]x |
+| 6 | Revenue Growth | Layer 2 grouped bars, 265% vs 66% stat callout |
+| 7 | Concentration (Bear) | Layer 3 area chart + SPY/RSP, Buffett Indicator stat verbal |
+| 8 | Sentiment | Layer 5: AI mentions + hype vs specificity |
+| 9 | Macro Wild Card | Layer 4 macro dashboard small multiples |
+| 10 | ML: Regime Classification | Regime probabilities + March 2026 readout |
+| 11 | ML: DTW + SHAP | DTW similarity + SHAP waterfall |
+| 12 | Synthesis | Bubble scorecard with traffic-light colors |
+| 13 | Key Takeaway | One-sentence verdict |
+| 14 | Limitations & Ethics | Top 4 limitations, not financial advice |
+| 15 | Thank You / Q&A | Notebook reference, dashboard available for demo |
+| 16 (backup) | SHAP Deep Dive | SHAP beeswarm plot |
+| 17 (backup) | Methodology | Walk-forward validation, confusion matrix |
 
 ---
 
@@ -384,7 +406,7 @@ Step 5.6  Build slideshow from notebook visuals
 ### Presentation Clarity & Storytelling (15pts)
 - **Target: 12-15/15**
 - Every section starts with a question and ends with an answer
-- Charts use consistent color scheme: NVDA = green (#76b900, NVIDIA brand), CSCO = blue (#049fd9, Cisco brand)
+- Charts use consistent color scheme: NVDA = green (#76b900 for light bg, #00CC96 for dark bg), CSCO = coral red (#EF553B). AI era annotations use the green palette; dot-com era annotations use the red/coral palette.
 - Markdown headers create clear hierarchy
 - Slideshow tells a story, not just dumps charts
 
@@ -436,7 +458,7 @@ Step 5.6  Build slideshow from notebook visuals
 | Time | Task | Owner |
 |---|---|---|
 | Morning | Kernel > Restart & Run All -- fix any failures | Both |
-| Morning | Finalize slideshow (15-16 slides) | Alice |
+| Morning | Finalize slideshow (16 slides: 1 title + 14 content + 1 close, plus 2 backup) | Alice |
 | Afternoon | Final review against submission checklist (see `09_submission_checklist.md`) | Both |
 | Afternoon | MLA 8 citations formatted and verified | Alice |
 | Evening | Submit via Google Form | Jimmy |
@@ -464,8 +486,8 @@ Step 5.6  Build slideshow from notebook visuals
 
 | Element | Color | Hex |
 |---|---|---|
-| NVIDIA / AI era | NVIDIA Green | `#76b900` |
-| Cisco / Dot-com era | Cisco Blue | `#049fd9` |
+| NVIDIA / AI era | NVIDIA Green | `#76b900` (light bg) / `#00CC96` (dark bg) |
+| Cisco / Dot-com era | Coral Red | `#EF553B` |
 | S&P 500 | Neutral Gray | `#888888` |
 | Danger/Bubble zone | Red | `#d62728` |
 | Safe/Healthy zone | Green | `#2ca02c` |
@@ -488,8 +510,8 @@ CHART_TEMPLATE = dict(
     )
 )
 
-COLOR_NVDA = "#76b900"
-COLOR_CSCO = "#049fd9"
+COLOR_NVDA = "#76b900"       # Use #00CC96 on dark backgrounds
+COLOR_CSCO = "#EF553B"       # Coral red — dot-com era
 COLOR_SP500 = "#888888"
 ```
 

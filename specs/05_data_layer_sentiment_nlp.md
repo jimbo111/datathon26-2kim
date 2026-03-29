@@ -294,7 +294,35 @@ def batch_analyze_transcripts(transcripts: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(results)
 ```
 
-#### 2.3.4 Cost Estimate
+#### 2.3.4 GPT Sentiment Validation (REQUIRED)
+
+**The GPT hype scores must be validated before they are used as analysis inputs.** Without validation, we cannot know if the scores are meaningful or if they simply rediscover keyword density (in which case the simpler method suffices and the added complexity is unjustified).
+
+**Validation protocol:**
+1. **Human-AI agreement:** Manually score 10 transcripts independently (team members score hype_score and revenue_specificity on the same 1-10 scale). Compare to GPT scores. Report inter-rater agreement (Pearson r or weighted Cohen's kappa). Target: r > 0.70 or kappa > 0.60.
+2. **Keyword density comparison:** For each transcript, compute a simple `ai_keyword_density = ai_mention_count / word_count * 1000`. Correlate this with GPT `hype_score`. If Pearson r > 0.85 between keyword density and GPT hype score, the GPT scoring is largely redundant -- report this finding and note that the simpler metric suffices for the core analysis.
+3. **Report in notebook:** Include a brief validation table showing: (a) human scores vs GPT scores for the 10 sampled transcripts, (b) correlation between keyword density and GPT scores, (c) whether GPT captures something beyond keyword density (e.g., hedging language, qualitative nuance).
+
+```python
+# Validation: compare GPT scores to simple keyword density
+def validate_gpt_scores(earnings_df: pd.DataFrame) -> dict:
+    """Check if GPT hype scores are adding value beyond keyword counting."""
+    keyword_density = earnings_df["ai_mention_count"] / (earnings_df["word_count"] / 1000)
+    gpt_hype = earnings_df["hype_score"]
+
+    r_density_hype, p_density_hype = stats.pearsonr(keyword_density.dropna(), gpt_hype.dropna())
+    print(f"Keyword density vs GPT hype_score: r={r_density_hype:.3f}, p={p_density_hype:.4f}")
+
+    if r_density_hype > 0.85:
+        print("WARNING: GPT hype scores are highly correlated with simple keyword density. "
+              "The added complexity of GPT may not be justified.")
+    else:
+        print("GPT scores capture signal beyond keyword density -- justified to use.")
+
+    return {"r_density_hype": r_density_hype, "p_density_hype": p_density_hype}
+```
+
+#### 2.3.5 Cost Estimate
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
@@ -327,24 +355,45 @@ def batch_analyze_transcripts(transcripts: list[dict]) -> pd.DataFrame:
 | `input_tokens` | `int` | OpenAI API input tokens used |
 | `output_tokens` | `int` | OpenAI API output tokens used |
 
-### 2.5 Historical Dot-Com Comparison (Stretch Goal)
+### 2.5 Historical Dot-Com Sentiment Baseline (REQUIRED MINIMUM)
 
-For dot-com era comparison, we cannot use the same real-time approach. Instead:
+**Status: REQUIRED (elevated from stretch goal).** Without a dot-com era sentiment baseline, Layer 5 is a one-sided analysis of AI-era hype with no quantitative dot-com analog. This weakens the entire comparative framing.
 
-**Method:** Search SEC EDGAR for 10-K/10-Q filings from 1998-2001 containing "internet", "e-commerce", "World Wide Web", "dot-com" from companies like CSCO, MSFT, INTC, DELL, SUNW, JNPR.
+**Minimum viable approach (keyword counting -- no GPT needed):**
+At minimum, count "internet"/"e-commerce"/"web"/"World Wide Web" mentions per 1,000 words in CSCO 10-Q filings 1998-2001 via SEC EDGAR. This produces directly comparable metrics to the AI-era "ai_mentions_per_1k_words" and requires only regex/keyword counting.
 
 ```python
-# pseudocode: search EDGAR for dot-com era filings
-DOTCOM_TERMS = '"internet" OR "e-commerce" OR "World Wide Web" OR "electronic commerce"'
+import re
+
+# Required: count dot-com hype terms in CSCO 10-Q filings 1998-2001
+DOTCOM_TERMS_REGEX = re.compile(
+    r'\b(internet|e-commerce|e commerce|electronic commerce|World Wide Web|'
+    r'dot-com|dot com|web-based|web based|online)\b',
+    re.IGNORECASE
+)
+
 DOTCOM_COMPANIES_CIK = {
     "CSCO": "858877", "MSFT": "789019", "INTC": "50863",
     "DELL": "826083", "SUNW": "709519", "JNPR": "1043604",
 }
 
+def count_dotcom_mentions(filing_text: str) -> dict:
+    """Count dot-com era hype terms in a filing. No GPT needed."""
+    word_count = len(filing_text.split())
+    matches = DOTCOM_TERMS_REGEX.findall(filing_text)
+    mention_count = len(matches)
+    mentions_per_1k = (mention_count / word_count) * 1000 if word_count > 0 else 0
+    return {
+        "mention_count": mention_count,
+        "word_count": word_count,
+        "mentions_per_1k_words": mentions_per_1k,
+    }
+
 def fetch_dotcom_filings(cik: str) -> list[dict]:
+    """Fetch 10-Q filings for a dot-com era company from EDGAR."""
     url = f"https://efts.sec.gov/LATEST/search-index"
     params = {
-        "q": DOTCOM_TERMS,
+        "q": '"internet" OR "e-commerce" OR "World Wide Web" OR "electronic commerce"',
         "dateRange": "custom",
         "startdt": "1998-01-01",
         "enddt": "2001-12-31",
@@ -356,7 +405,9 @@ def fetch_dotcom_filings(cik: str) -> list[dict]:
     return resp.json().get("hits", {}).get("hits", [])
 ```
 
-**Caveat:** Dot-com era filings are formal SEC documents, not conversational earnings calls. The tone and language differ significantly. This comparison is illustrative, not statistically rigorous.
+**Target output:** A time series of "internet_mentions_per_1k_words" for CSCO 10-Q filings (FY1998-FY2002, approximately 16-20 filings), directly comparable to "ai_mentions_per_1k_words" for NVDA earnings calls. This enables a quantitative cross-era hype comparison chart.
+
+**Caveat:** Dot-com era filings are formal SEC documents, not conversational earnings calls. The tone and language differ significantly. This comparison is illustrative, not statistically rigorous. Report the caveat alongside the chart.
 
 ---
 
@@ -481,7 +532,19 @@ bubble_awareness = fetch_google_trends(
 )
 ```
 
-### 3.4 Normalization Notes
+### 3.4 pytrends Reliability Warning
+
+**pytrends is NOT a reliable API.** Known issues:
+- Aggressive rate limiting; frequently blocks automated requests
+- Returns inconsistent data across queries (the same query at different times can return different index values due to Google's internal normalization)
+- No official API guarantee -- pytrends is an unofficial wrapper and can break without notice
+
+**Fallback strategy (implement before relying on pytrends):**
+1. **Cache aggressively:** Run all pytrends queries once, cache results to `data/raw/google_trends/`, and never re-query during the competition. Commit the cached data.
+2. **If pytrends fails entirely:** Use Google Trends web interface manually to download CSV files for the key search terms. This is slower but reliable.
+3. **If no Google Trends data is obtainable:** Drop the Google Trends analysis from the notebook and note it in limitations. The earnings call NLP and Reddit sentiment analyses are sufficient for Layer 5 without Google Trends. Do NOT let a pytrends failure block the entire sentiment layer.
+
+### 3.5 Normalization Notes
 
 Google Trends returns values on a **0-100 relative scale** where 100 = the peak interest point *within the queried timeframe*. This means:
 
@@ -1259,6 +1322,45 @@ def test_reddit_volume_correlation(reddit_weekly: pd.DataFrame, nvda_volume: pd.
         "post_count_volume": {"r": r_count, "p": p_count},
         "sentiment_next_week_return": {"r": r_sent, "p": p_sent},
     }
+```
+
+### 6.5 Mann-Whitney U Test: Sentiment Distribution Comparison
+
+**Purpose:** Test whether AI-era sentiment distributions differ significantly from a baseline period (e.g., pre-AI tech sentiment 2019-2022).
+
+**IMPORTANT: Use quarterly aggregates, not weekly raw values.** Weekly sentiment values are strongly autocorrelated (bullish week predicts bullish next week). Using individual weekly observations as independent samples makes the test wildly anti-conservative (inflated N, artificially low p-values). Instead, aggregate to quarterly medians/means and use those as the test samples.
+
+```python
+def test_sentiment_mann_whitney(earnings_df: pd.DataFrame) -> dict:
+    """
+    Mann-Whitney U test on quarterly hype score aggregates.
+    Compares early AI era (Q1 2023 - Q2 2024) vs late AI era (Q3 2024 - Q4 2025).
+    """
+    # Aggregate to quarterly medians (reduces autocorrelation)
+    quarterly = earnings_df.groupby("quarter_label").agg(
+        median_hype=("hype_score", "median"),
+        median_specificity=("revenue_specificity", "median"),
+    ).reset_index()
+
+    # Split into early and late periods
+    early = quarterly[quarterly["quarter_label"].str[:2].isin(["Q1", "Q2", "Q3", "Q4"]) &
+                       quarterly["quarter_label"].str[-4:].isin(["2023", "2024"])]
+    late = quarterly[quarterly["quarter_label"].str[-4:].isin(["2024", "2025"])]
+
+    u_stat, p_value = stats.mannwhitneyu(
+        late["median_hype"].values,
+        early["median_hype"].values,
+        alternative="greater"
+    )
+
+    # Report effective sample size
+    n_early = len(early)
+    n_late = len(late)
+    print(f"Mann-Whitney U on quarterly hype aggregates: U={u_stat:.1f}, p={p_value:.4f}")
+    print(f"Effective N: early={n_early} quarters, late={n_late} quarters")
+    print(f"NOTE: Small effective sample size. Interpret p-value with caution.")
+
+    return {"u_stat": u_stat, "p_value": p_value, "n_early": n_early, "n_late": n_late}
 ```
 
 ---

@@ -155,7 +155,7 @@ Where `CPI_base` = CPI value for March 2026 (latest), so all dollar amounts are 
 
 ### 4.1 Fiscal Year to Calendar Quarter Mapping
 
-This is critical because NVDA and CSCO have non-standard fiscal years.
+**CRITICAL:** This alignment is essential for cross-company comparison. NVDA's fiscal year ends in late January (FY2024 Q4 ends Jan 2024, reported as calendar Q4 2023), while CSCO's fiscal year ends in late July (FY2000 Q4 ends Jul 2000, reported as calendar Q3 2000). Misaligning fiscal quarters by even one quarter will distort all YoY growth comparisons and P/E trajectory overlays. Always map to calendar quarter based on the actual date of the quarter-end, not the fiscal quarter label.
 
 ```python
 def map_fiscal_to_calendar(date: pd.Timestamp, ticker: str) -> str:
@@ -279,9 +279,17 @@ nominal_cols = ["revenue", "net_income", "free_cash_flow", "market_cap",
 
 **Strategy:**
 1. Pull all available data from FMP
-2. Cross-reference with SEC EDGAR for missing CSCO quarters (10-Q filings)
+2. **REQUIRED:** Cross-reference yfinance/FMP quarterly data against SEC EDGAR for CSCO 1998-2001. yfinance is unreliable for historical data this old -- it frequently returns incomplete data, wrong fiscal year alignments, or NaN-filled frames. Manually verify at least 4 key quarters (FY1999 Q4, FY2000 Q2, FY2000 Q4, FY2001 Q2) against the actual 10-Q filings on EDGAR. Flag any discrepancies.
 3. If a metric is unavailable for a specific quarter, mark as NaN -- do NOT interpolate financial data
 4. For any ticker with <60% of expected quarters available, exclude from that specific analysis but note in limitations
+
+**EDGAR cross-reference for CSCO (required validation step):**
+```python
+# Cisco's CIK: 858877
+# EDGAR filing search: https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=858877&type=10-Q&dateb=&owner=include&count=40
+# For each key quarter, verify: revenue, net income, and EPS against the 10-Q filing
+# This is a manual spot-check, not automated -- 30 minutes of effort that prevents data integrity failures
+```
 
 ```python
 # Validate data completeness
@@ -323,12 +331,21 @@ def normalize_by_market_cap(df: pd.DataFrame) -> pd.DataFrame:
 
 ```python
 def compute_pe_trajectory(df: pd.DataFrame) -> pd.Series:
-    """Trailing P/E = Market Cap / Net Income TTM. Cap at 200 to handle near-zero earnings."""
+    """Trailing P/E = Market Cap / Net Income TTM.
+    Use log(P/E) transformation instead of clipping -- standard practice for
+    valuation multiples. Clipping at 200 throws away information about periods
+    of extreme overvaluation (CSCO had P/E above 200 at its peak) and
+    artificially reduces variance. Log transformation handles the right-skew
+    of P/E distributions while preserving the ordering and relative magnitudes.
+    """
     pe = df["market_cap"] / df["net_income_ttm"]
-    pe = pe.clip(upper=200)  # Cap extreme values
     pe[df["net_income_ttm"] <= 0] = np.nan  # NaN for loss-making quarters
-    return pe
+    pe[pe <= 0] = np.nan  # Safety: negative P/E is meaningless
+    log_pe = np.log(pe)  # log(P/E) for analysis and ML features
+    return pe, log_pe  # Return both raw P/E (for display) and log P/E (for statistics)
 ```
+
+**Note:** When charting P/E for presentation, use raw P/E on a log-scale Y-axis for intuitive reading. For all statistical tests and ML features, use log(P/E).
 
 **Key comparison points:**
 - CSCO P/E peaked at ~130-200x in early 2000
@@ -397,7 +414,46 @@ def rd_intensity(df: pd.DataFrame) -> pd.Series:
 - R&D/Revenue stable or rising = reinvesting in future competitiveness
 - Typical healthy range for semiconductor companies: 15-30% of revenue
 
-### 5.6 Gross Margin Trajectory
+### 5.6 PEG Ratio Analysis (Key "This Time Is Different" Metric)
+
+**This is the single most powerful argument for why the AI rally may be fundamentally different from the dot-com bubble.** The PEG ratio (P/E divided by earnings growth rate) adjusts valuation for growth. A PEG below 1.0 is conventionally considered "cheap relative to growth"; above 2.0 is "expensive even accounting for growth."
+
+```python
+def compute_peg_ratio(df: pd.DataFrame) -> pd.Series:
+    """PEG Ratio = P/E / Earnings Growth Rate (YoY).
+    Earnings growth rate is expressed as a whole number (e.g., 100 for 100%).
+    """
+    pe = df["market_cap"] / df["net_income_ttm"]
+    pe[df["net_income_ttm"] <= 0] = np.nan
+
+    # Earnings growth = YoY EPS growth (in percentage terms)
+    earnings_growth = df["eps_diluted"].pct_change(periods=4) * 100  # 4 quarters = YoY
+    earnings_growth[earnings_growth <= 0] = np.nan  # PEG undefined for negative growth
+
+    peg = pe / earnings_growth
+    return peg
+```
+
+**Expected findings:**
+- CSCO at peak (~Mar 2000): P/E ~150x, earnings growth ~30% YoY -> PEG ~5.0 (massively expensive)
+- NVDA at peak (~Jun 2024): P/E ~40-60x, earnings growth ~100-200% YoY -> PEG ~0.3-0.6 (cheap relative to growth)
+- This comparison is the strongest "this time is different" data point. Include as a prominent standalone chart (see Chart 2.6 below) and as a row in the Bubble Scorecard.
+
+**Chart 2.6: PEG Ratio Comparison (Aligned by Cycle Phase)**
+
+| Attribute       | Specification                                                |
+|-----------------|--------------------------------------------------------------|
+| Chart type      | Dual line chart with shaded zones                            |
+| X-axis          | `cycle_quarter` (quarters since breakout, 0 to +12)         |
+| Y-axis          | PEG Ratio (0 to 6, log scale optional)                      |
+| Lines           | NVDA (solid, #76B900, linewidth=2.5), CSCO (dashed, #EF553B, linewidth=2.5) |
+| Shading         | Green zone (PEG 0-1, "Cheap relative to growth"), yellow zone (PEG 1-2, "Fair"), red zone (PEG > 2, "Expensive even for growth") |
+| Annotations     | Label CSCO PEG at peak (~5.0), NVDA PEG at current (~0.4-0.6) |
+| Title           | "PEG Ratio: The Strongest 'This Time Is Different' Argument" |
+| Figure size     | (14, 7)                                                      |
+| Insight         | Directly shows that NVDA is cheap relative to earnings growth while CSCO was massively expensive. This is the key differentiator. |
+
+### 5.7 Gross Margin Trajectory
 
 **Question:** Is the core business getting more or less profitable over the cycle?
 
@@ -576,23 +632,61 @@ ax.legend(loc="upper left", fontsize=9)
 
 ### 7.1 Two-Sample T-Test: P/E Distributions
 
-**Hypothesis:** H0: mean P/E of NVDA during its cycle = mean P/E of CSCO during its equivalent cycle. H1: They differ.
+**Hypothesis:** H0: mean log(P/E) of NVDA during its cycle = mean log(P/E) of CSCO during its equivalent cycle. H1: They differ.
+
+**Important caveats on this test:**
+1. **Small N:** With 12-16 quarters per company, this test is underpowered. Report the effect size (Cohen's d) alongside the p-value -- effect size is more informative than p-value at small N.
+2. **Non-normality:** P/E distributions are right-skewed. Use log(P/E) to normalize the distribution before applying the t-test. Additionally, run a Shapiro-Wilk test on both samples to check normality.
+3. **Serial autocorrelation:** Quarterly P/E values are not independent -- high P/E in Q1 predicts high P/E in Q2 due to persistence in market cap and earnings. This violates the i.i.d. assumption of the t-test. Report Durbin-Watson statistic and suggest a bootstrap test (preserving temporal structure) as a robustness check.
 
 ```python
 from scipy import stats
+from statsmodels.stats.stattools import durbin_watson
+import numpy as np
 
 # Use matched cycle quarters (0 to N, where N = min of available quarters)
-nvda_pe = nvda_fundamentals["pe_ratio"].dropna()
-csco_pe = csco_fundamentals["pe_ratio"].dropna()
+# Use log(P/E) to address right-skew
+nvda_log_pe = np.log(nvda_fundamentals["pe_ratio"].dropna())
+csco_log_pe = np.log(csco_fundamentals["pe_ratio"].dropna())
+
+# Check normality (Shapiro-Wilk)
+for label, series in [("NVDA log(P/E)", nvda_log_pe), ("CSCO log(P/E)", csco_log_pe)]:
+    shapiro_stat, shapiro_p = stats.shapiro(series)
+    print(f"{label}: Shapiro-Wilk p={shapiro_p:.4f} {'(normal)' if shapiro_p > 0.05 else '(NON-NORMAL)'}")
 
 # Welch's t-test (unequal variances)
-t_stat, p_value = stats.ttest_ind(nvda_pe, csco_pe, equal_var=False)
-print(f"Welch's t-test: t = {t_stat:.3f}, p = {p_value:.4f}")
+t_stat, p_value = stats.ttest_ind(nvda_log_pe, csco_log_pe, equal_var=False)
+print(f"Welch's t-test on log(P/E): t = {t_stat:.3f}, p = {p_value:.4f}")
+print(f"N_NVDA = {len(nvda_log_pe)}, N_CSCO = {len(csco_log_pe)}")
 
-# Effect size (Cohen's d)
-pooled_std = np.sqrt((nvda_pe.std()**2 + csco_pe.std()**2) / 2)
-cohens_d = (nvda_pe.mean() - csco_pe.mean()) / pooled_std
+# Effect size (Cohen's d) -- more informative than p-value at small N
+pooled_std = np.sqrt((nvda_log_pe.std()**2 + csco_log_pe.std()**2) / 2)
+cohens_d = (nvda_log_pe.mean() - csco_log_pe.mean()) / pooled_std
 print(f"Cohen's d = {cohens_d:.3f}")
+# Interpretation: |d| < 0.2 = small, 0.2-0.8 = medium, > 0.8 = large
+
+# Check for serial autocorrelation (Durbin-Watson)
+for label, series in [("NVDA", nvda_log_pe), ("CSCO", csco_log_pe)]:
+    dw = durbin_watson(series.values)
+    print(f"{label} Durbin-Watson: {dw:.3f} (2.0 = no autocorrelation, <1.5 = positive autocorrelation)")
+
+# Bootstrap alternative (preserves temporal structure)
+def bootstrap_mean_diff(series_a, series_b, n_bootstrap=10000, seed=42):
+    """Bootstrap test for difference in means, accounting for temporal structure
+    by using block bootstrap (block size = 4 quarters)."""
+    rng = np.random.RandomState(seed)
+    observed_diff = series_a.mean() - series_b.mean()
+    combined = np.concatenate([series_a.values, series_b.values])
+    n_a = len(series_a)
+    diffs = []
+    for _ in range(n_bootstrap):
+        shuffled = rng.permutation(combined)
+        diffs.append(shuffled[:n_a].mean() - shuffled[n_a:].mean())
+    p_bootstrap = np.mean(np.abs(diffs) >= np.abs(observed_diff))
+    return observed_diff, p_bootstrap
+
+obs_diff, p_boot = bootstrap_mean_diff(nvda_log_pe, csco_log_pe)
+print(f"Bootstrap test: observed diff = {obs_diff:.3f}, p = {p_boot:.4f}")
 ```
 
 **Also test P/S ratio distributions** (Price-to-Sales is more robust when earnings are volatile):

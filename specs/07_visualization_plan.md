@@ -29,7 +29,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | Role | Hex | Name | Usage |
 |---|---|---|---|
 | Dot-com era primary | `#EF553B` | Coral Red | CSCO price, dot-com period annotations |
-| AI era primary | `#636EFA` | Indigo Blue | NVDA price, AI period annotations |
+| AI era primary | `#76b900` (light bg) / `#00CC96` (dark bg) | NVIDIA Green | NVDA price, AI period annotations |
 | Bubble signal | `#FFA15A` | Warm Orange | Bubble regime, hype metrics, danger zones |
 | Safe/normal signal | `#00CC96` | Teal Green | Normal growth regime, fundamental support |
 | Correction signal | `#AB63FA` | Purple | Correction regime, crash periods |
@@ -40,7 +40,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | Text primary | `#E8E8E8` | Light Gray | Dark theme text |
 | Text secondary | `#888888` | Mid Gray | Axis labels, annotations |
 | Shaded regions | `rgba(239,85,59,0.15)` | — | Dot-com bubble shading |
-| Shaded regions | `rgba(99,110,250,0.15)` | — | AI era shading |
+| Shaded regions | `rgba(118,185,0,0.15)` | — | AI era shading |
 
 **Sequential palette (heatmaps):** Plotly `Viridis` for quantitative heatmaps, `RdYlGn_r` for diverging (red = danger, green = safe).
 
@@ -85,11 +85,12 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Dual-axis line chart |
 | **X-axis** | "Months Since Breakout" (0 to 48) |
 | **Y-axis** | "Price Indexed to 100 at Breakout" |
-| **Series 1** | CSCO normalized (red, `#EF553B`, solid line, 2.5px) |
-| **Series 2** | NVDA normalized (blue, `#636EFA`, solid line, 2.5px) |
+| **Series 1** | CSCO normalized (coral red, `#EF553B`, solid line, 2.5px) |
+| **Series 2** | NVDA normalized (green, `#76b900` light bg / `#00CC96` dark bg, solid line, 2.5px) |
+| **Series 3** | Nortel Networks (NT) normalized (gray, `#888888`, dashed line, 1.5px, label: "Nortel Networks (bankrupt 2009)") — non-survivor dot-com analog addressing survivorship bias |
 | **Annotations** | Vertical dashed line at CSCO peak (month ~27); "CSCO Peak: +1,200%" label. Vertical dashed line at current NVDA month; "NVDA Now: +X%" label |
 | **Shading** | Light red region for CSCO crash phase (months 27-48). Question mark overlay on NVDA future region |
-| **Data sources** | yfinance daily OHLCV for CSCO (Jan 1998 - Dec 2001), NVDA (Jan 2023 - Mar 2026), resampled to monthly close, normalized to 100 at month 0 |
+| **Data sources** | yfinance daily OHLCV for CSCO (Jan 1998 - Dec 2001), NVDA (Jan 2023 - Mar 2026), NT (Jan 1998 - delisting ~2009), resampled to monthly close, normalized to 100 at month 0 |
 | **Key insight** | "The price trajectories are strikingly similar in the run-up phase. NVDA is currently at the same point where CSCO was 6 months before its peak." |
 | **Plotly config** | `go.Scatter`, mode='lines', hovertemplate='Month %{x}: %{y:.0f}<extra>%{fullData.name}</extra>' |
 | **Destination** | Notebook, Slides (Slide 2 — THE hook), Dashboard (hero card) |
@@ -104,8 +105,8 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Line chart (area fill below zero) |
 | **X-axis** | "Months Since Breakout" |
 | **Y-axis** | "Drawdown %" (0% at top, -80% at bottom) |
-| **Series 1** | CSCO drawdown (red area fill, opacity 0.3) |
-| **Series 2** | NVDA drawdown (blue area fill, opacity 0.3) |
+| **Series 1** | CSCO drawdown (coral red `#EF553B` area fill, opacity 0.3) |
+| **Series 2** | NVDA drawdown (green `#76b900` area fill, opacity 0.3) |
 | **Annotations** | "CSCO max drawdown: -89%"; current NVDA drawdown value |
 | **Data sources** | Derived from daily price data; `(price / cummax) - 1` |
 | **Key insight** | "NVDA has experienced drawdowns of X% during this period — smaller than CSCO's corrections but significant. The CSCO drawdown only began 27 months in." |
@@ -122,8 +123,8 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Line chart |
 | **X-axis** | "Months Since Breakout" |
 | **Y-axis** | "Trailing 12-Month Return (%)" |
-| **Series 1** | CSCO rolling return (red) |
-| **Series 2** | NVDA rolling return (blue) |
+| **Series 1** | CSCO rolling return (coral red `#EF553B`) |
+| **Series 2** | NVDA rolling return (green `#76b900`) |
 | **Reference line** | Horizontal line at 0% (black dashed) |
 | **Reference line** | Horizontal line at 100% (orange dashed, label: "2x in 12 months") |
 | **Data sources** | Derived: `(price_t / price_{t-252}) - 1` from daily data |
@@ -141,8 +142,8 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Dual-panel bar chart (side by side) |
 | **X-axis** | Date (monthly) |
 | **Y-axis** | "Monthly Average Daily Volume (millions of shares)" |
-| **Panel 1** | CSCO volume bars (red gradient — lighter = earlier, darker = peak) |
-| **Panel 2** | NVDA volume bars (blue gradient) |
+| **Panel 1** | CSCO volume bars (coral red gradient — lighter = earlier, darker = peak) |
+| **Panel 2** | NVDA volume bars (green gradient) |
 | **Annotations** | Volume at peak months highlighted with callout |
 | **Data sources** | yfinance daily volume, aggregated to monthly average |
 | **Key insight** | "Volume surged X-fold in the final 6 months of the CSCO bubble. NVDA volume has [surged/remained stable], suggesting [similar/different] retail participation." |
@@ -163,8 +164,8 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Dual-axis line chart with shaded danger zone |
 | **X-axis** | "Months Since Breakout" |
 | **Y-axis** | "Trailing P/E Ratio" |
-| **Series 1** | CSCO P/E (red) — shows explosive rise to 200+ |
-| **Series 2** | NVDA P/E (blue) — shows moderate/declining from peak |
+| **Series 1** | CSCO P/E (coral red `#EF553B`) — shows explosive rise to 200+ |
+| **Series 2** | NVDA P/E (green `#76b900`) — shows moderate/declining from peak |
 | **Shading** | Horizontal band above P/E = 50 shaded orange ("Historically Unsustainable Zone") |
 | **Reference line** | S&P 500 long-term median P/E (~17) as gray dashed |
 | **Data sources** | yfinance quarterly earnings + daily price; trailing 4-quarter EPS |
@@ -182,7 +183,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Grouped bar chart |
 | **X-axis** | Quarter (relative: Q-8 to Q0 from breakout) |
 | **Y-axis** | "YoY Revenue Growth (%)" |
-| **Color** | Red bars = CSCO, Blue bars = NVDA |
+| **Color** | Coral red (`#EF553B`) bars = CSCO, Green (`#76b900`) bars = NVDA |
 | **Annotations** | Arrow pointing to NVDA's peak growth quarter with value |
 | **Data sources** | yfinance quarterly financials; SEC EDGAR if needed |
 | **Key insight** | "NVDA revenue grew 265% YoY at peak vs CSCO's 66%. This is fundamentally different — NVDA's growth was 4x faster and driven by measurable enterprise AI spending." |
@@ -199,7 +200,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Scatter plot with trajectory arrows |
 | **X-axis** | "Annual Revenue ($B)" — log scale |
 | **Y-axis** | "Market Cap ($B)" — log scale |
-| **Points** | Each point = one quarter. CSCO path in red (connected by arrows), NVDA path in blue (connected by arrows). Point size = P/E ratio. |
+| **Points** | Each point = one quarter. CSCO path in coral red `#EF553B` (connected by arrows), NVDA path in green `#76b900` (connected by arrows). Point size = P/E ratio. |
 | **Reference line** | Diagonal lines for P/S ratios (1x, 5x, 10x, 20x, 50x) as light gray |
 | **Annotations** | "CSCO peak: $556B cap / $18B rev (31x P/S)" and "NVDA now: $XB cap / $XB rev (Xx P/S)" |
 | **Data sources** | yfinance quarterly financials + market cap |
@@ -218,7 +219,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **X-axis** | Quarter (relative) |
 | **Y-axis Left** | "FCF ($B)" — bars |
 | **Y-axis Right** | "FCF Yield (%)" — line |
-| **Color** | Red (CSCO) / Blue (NVDA) side by side |
+| **Color** | Coral red `#EF553B` (CSCO) / Green `#76b900` (NVDA) side by side |
 | **Reference line** | FCF Yield = 0% highlighted (companies burning cash) |
 | **Data sources** | yfinance quarterly cash flow statements |
 | **Key insight** | "NVDA generates $X billion in free cash flow quarterly — Cisco was also profitable, but NVDA's FCF yield at this market cap is [higher/lower], suggesting [more/less] fundamental support." |
@@ -235,7 +236,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Area chart |
 | **X-axis** | Quarter (relative) |
 | **Y-axis** | "R&D as % of Revenue" |
-| **Series** | Red area (CSCO), Blue area (NVDA) |
+| **Series** | Coral red area (CSCO, `#EF553B`), Green area (NVDA, `#76b900`) |
 | **Annotations** | Industry medians for reference |
 | **Data sources** | yfinance quarterly financials |
 | **Key insight** | "High R&D spending indicates long-term investment in product moats. NVDA spends X% of revenue on R&D, creating a defensible competitive position that dot-com companies lacked." |
@@ -257,7 +258,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **X-axis** | Date (1995-2026) |
 | **Y-axis** | "Weight in S&P 500 (%)" |
 | **Areas** | Top 5 stocks stacked, each a different shade. Bottom 495 in gray. |
-| **Shading** | Vertical bands for dot-com era (light red) and AI era (light blue) |
+| **Shading** | Vertical bands for dot-com era (light coral red) and AI era (light green) |
 | **Annotations** | "Top 5 = X% (Mar 2000)" and "Top 5 = X% (Mar 2026)" with horizontal reference lines |
 | **Data sources** | S&P 500 constituent weights (via Slickcharts, Wikipedia historical, or custom computation from market caps) |
 | **Key insight** | "Market concentration has returned to dot-com levels. The top 5 stocks now account for ~28% of the S&P 500, compared to ~18% at the dot-com peak. This is a structural similarity that even strong fundamentals cannot dismiss." |
@@ -310,7 +311,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Side-by-side treemaps |
 | **Layout** | Two treemaps: left = Mar 2000, right = Mar 2026 |
 | **Hierarchy** | Sector > Top 3 stocks in each sector |
-| **Color** | Sector-specific colors consistent across both panels; tech sector in AI-era blue |
+| **Color** | Sector-specific colors consistent across both panels; tech sector in NVIDIA green (`#76b900`) |
 | **Size** | Proportional to market cap weight |
 | **Data sources** | S&P 500 sector weights — historical (2000: Wikipedia/academic sources) and current (Slickcharts) |
 | **Key insight** | "Tech + Communication Services now represent ~40% of the S&P 500, similar to Tech's ~35% dominance at the dot-com peak. The concentration is comparable, even if the companies are more profitable." |
@@ -349,7 +350,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **X-axis** | Date (1995-2026) |
 | **Y-axis Left** | "Fed Funds Rate (%)" — step line |
 | **Y-axis Right** | "S&P 500 Level" — area chart (light fill) |
-| **Shading** | Dot-com era (light red), AI era (light blue) |
+| **Shading** | Dot-com era (light coral red), AI era (light green) |
 | **Annotations** | "1999-2000: Rate hikes popped the bubble" and "2023-2024: Rates held high — market rallied anyway" |
 | **Data sources** | FRED: DFF (fed funds rate), yfinance: ^GSPC (S&P 500) |
 | **Key insight** | "The 1999-2000 rate hikes helped trigger the dot-com crash. Today, rates are at similar levels — but the market has rallied through them, which is historically unusual." |
@@ -419,7 +420,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Title** | "Macro Conditions Dashboard: Then vs Now" |
 | **Type** | 2x3 small multiples grid |
 | **Subplots** | (1) Fed funds rate, (2) M2 growth, (3) Yield curve, (4) Credit spread, (5) CPI YoY, (6) VIX |
-| **Each subplot** | Red dot = dot-com era value at equivalent month, Blue dot = current value, Gray line = full history |
+| **Each subplot** | Coral red dot = dot-com era value at equivalent month, Green dot = current AI era value, Gray line = full history |
 | **Data sources** | All FRED macro series |
 | **Key insight** | "At a glance: the macro environment is fundamentally different. Rates are higher, M2 is tighter, but credit conditions are benign. This is neither the permissive 1999 environment nor a crisis setup." |
 | **Plotly config** | `make_subplots(rows=2, cols=3, subplot_titles=[...])` |
@@ -491,8 +492,8 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Dual line chart (normalized) |
 | **X-axis** | "Months Since Breakout" |
 | **Y-axis** | "Google Trends Index (normalized 0-100)" |
-| **Series 1** | "internet" search interest 1998-2001 (red) — Note: Google Trends only goes back to 2004, so use "Zeitgeist" or proxy |
-| **Series 2** | "artificial intelligence" search interest 2023-2026 (blue) |
+| **Series 1** | "internet" search interest 1998-2001 (coral red `#EF553B`) — Note: Google Trends only goes back to 2004, so use "Zeitgeist" or proxy |
+| **Series 2** | "artificial intelligence" search interest 2023-2026 (green `#76b900`) |
 | **Data sources** | Google Trends API (pytrends) |
 | **Key insight** | "Public search interest in AI has followed a similar surge pattern to 'internet' searches during the dot-com era, though AI interest has shown [more/less] persistence." |
 | **Plotly config** | `go.Scatter`, mode='lines' |
@@ -508,7 +509,7 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Multi-line chart with Y-axis normalized to z-scores |
 | **X-axis** | Date (2022-2026) |
 | **Y-axis** | "Z-Score (standard deviations from mean)" |
-| **Series** | (1) Google Trends "AI" — blue, (2) Reddit sentiment — green, (3) Earnings call hype score — orange, (4) VIX inverted — purple |
+| **Series** | (1) Google Trends "AI" — green `#76b900`, (2) Reddit sentiment — cyan `#19D3F3`, (3) Earnings call hype score — orange `#FFA15A`, (4) VIX inverted — purple `#AB63FA` |
 | **Reference bands** | +/- 2 standard deviations shaded (extreme territory) |
 | **Data sources** | Google Trends, Reddit API, NLP pipeline output, CBOE VIX |
 | **Key insight** | "Multiple sentiment indicators are elevated simultaneously, which historically precedes periods of mean reversion. The correlation between these independent signals is itself a warning sign." |
@@ -580,8 +581,8 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | **Type** | Line chart with confidence band |
 | **X-axis** | Month (Jun 2023 - Mar 2026) |
 | **Y-axis** | "Similarity Score (0-100)" |
-| **Line** | Blue solid line = composite DTW similarity score |
-| **Confidence band** | Light blue shaded area = 95% bootstrap CI |
+| **Line** | Green solid line (`#76b900`) = composite DTW similarity score |
+| **Confidence band** | Light green shaded area = 95% bootstrap CI |
 | **Threshold lines** | Horizontal dashed lines at 40 ("Moderate"), 60 ("Strong"), 80 ("Very Strong") with labels |
 | **Secondary Y (optional)** | NVDA price as faint gray line for context |
 | **Annotations** | Latest score with CI: "Mar 2026: X [CI: Y-Z]" |
@@ -632,6 +633,46 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 
 ## 8. Chart Inventory Summary
 
+### Executive Summary: PRIMARY vs SECONDARY Charts
+
+**15 PRIMARY charts** (must-have for notebook main body — these are the charts judges will evaluate):
+
+1. **1.1** — Normalized Price Overlay (THE hook)
+2. **1.2** — Drawdown From ATH
+3. **2.1** — P/E Ratio Comparison
+4. **2.2** — Revenue Growth Rate
+5. **2.3** — Market Cap vs Revenue Scatter
+6. **3.1** — Top-N Concentration Ratio Timeline
+7. **3.2** — SPY vs RSP Spread
+8. **3.3** — Buffett Indicator
+9. **4.1** — Fed Funds Rate Overlay
+10. **4.3** — Yield Curve with Recession Bands
+11. **4.5** — Macro Dashboard (Small Multiples)
+12. **5.1** — AI Mention Rate in Earnings Calls
+13. **5.2** — Hype vs Specificity Score
+14. **ML.1** — Regime Classification Probabilities
+15. **ML.2** — DTW Similarity Score Timeline
+
+**15 SECONDARY charts** (supplementary/appendix — include if time permits, mark clearly as "Supplementary Analysis"):
+
+1. **1.3** — Rolling 12-Month Returns
+2. **1.4** — Volume Profile
+3. **2.4** — Free Cash Flow Yield
+4. **2.5** — R&D Spending %
+5. **3.4** — S&P 500 Sector Treemap
+6. **3.5** — HHI Over Time
+7. **4.2** — M2 Money Supply Growth
+8. **4.4** — Credit Spreads
+9. **4.6** — Real Interest Rate
+10. **5.3** — Google Trends AI vs Internet
+11. **5.4** — Multi-Signal Sentiment Timeline
+12. **5.5** — Reddit Mention Volume
+13. **5.6** — Word Cloud
+14. **ML.3** — SHAP Summary Plot (Beeswarm)
+15. **ML.4** — SHAP Waterfall for Today
+
+> **Notebook rule:** The 15 PRIMARY charts go in the main EDA / ML sections. The 15 SECONDARY charts go in a clearly labeled "Supplementary Analysis" subsection or appendix. This respects judge time and signals analytical prioritization.
+
 ### By Layer
 
 | Layer | Chart Count | Primary | Secondary |
@@ -641,8 +682,8 @@ All charts use a consistent palette. Two semantic color groups: **dot-com era** 
 | Layer 3: Concentration | 5 | 3 (3.1, 3.2, 3.3) | 2 (3.4, 3.5) |
 | Layer 4: Macro | 6 | 3 (4.1, 4.3, 4.5) | 3 (4.2, 4.4, 4.6) |
 | Layer 5: Sentiment | 6 | 2 (5.1, 5.2) | 4 (5.3, 5.4, 5.5, 5.6) |
-| ML Outputs | 4 | 4 (ML.1-ML.4) | 0 |
-| **Total** | **30** | **17** | **13** |
+| ML Outputs | 4 | 2 (ML.1, ML.2) | 2 (ML.3, ML.4) |
+| **Total** | **30** | **15** | **15** |
 
 ### By Destination
 
@@ -723,12 +764,12 @@ dark_template = go.layout.Template(
 
         # Color sequence
         colorway=[
-            '#636EFA',  # Indigo Blue (AI era)
+            '#00CC96',  # NVIDIA Green (AI era — dark bg variant)
             '#EF553B',  # Coral Red (Dot-com era)
-            '#00CC96',  # Teal Green
             '#FFA15A',  # Warm Orange
             '#AB63FA',  # Purple
             '#19D3F3',  # Cyan
+            '#636EFA',  # Indigo Blue
             '#FF6692',  # Pink
             '#B6E880',  # Lime
         ],
@@ -804,16 +845,16 @@ light_template = go.layout.Template(
         # Margins
         margin=dict(l=60, r=30, t=80, b=60),
 
-        # Same color sequence (these work on both backgrounds)
+        # Color sequence — NVDA green first, CSCO coral red second
         colorway=[
-            '#636EFA',
-            '#EF553B',
-            '#00CC96',
-            '#FFA15A',
-            '#AB63FA',
-            '#19D3F3',
-            '#FF6692',
-            '#B6E880',
+            '#76b900',  # NVIDIA Green (AI era — light bg variant)
+            '#EF553B',  # Coral Red (Dot-com era)
+            '#FFA15A',  # Warm Orange
+            '#AB63FA',  # Purple
+            '#19D3F3',  # Cyan
+            '#636EFA',  # Indigo Blue
+            '#FF6692',  # Pink
+            '#B6E880',  # Lime
         ],
 
         # Hover
@@ -894,10 +935,10 @@ def add_era_shading(fig, era='dotcom'):
                       annotation_font_size=10, annotation_font_color='#AB63FA')
     elif era == 'ai':
         fig.add_vrect(x0='2023-01-01', x1='2026-03-31',
-                      fillcolor='rgba(99,110,250,0.08)', layer='below',
+                      fillcolor='rgba(118,185,0,0.08)', layer='below',
                       line_width=0,
                       annotation_text='AI Era', annotation_position='top left',
-                      annotation_font_size=10, annotation_font_color='#636EFA')
+                      annotation_font_size=10, annotation_font_color='#76b900')
     return fig
 
 def add_recession_bands(fig):

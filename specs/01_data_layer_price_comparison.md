@@ -37,8 +37,11 @@
 | QCOM   | Qualcomm Inc           | Semiconductor peer       | 1998-01-01 to 2002-12-31 |
 | INTC   | Intel Corp             | Semiconductor incumbent  | 1998-01-01 to 2002-12-31 |
 | SUNW   | Sun Microsystems       | Infrastructure (use JAVA after ticker change, or COMS as proxy if unavailable) | 1998-01-01 to 2002-12-31 |
+| NT     | Nortel Networks        | Non-survivor analog (went bankrupt 2009) | 1998-01-01 to 2009-01-14 (delisting) |
 
 **Note on SUNW:** Sun Microsystems traded under SUNW until 2007 when it became JAVA. yfinance may not have SUNW data. Fallback: use `JAVA` ticker and filter to the date range 1998-2002. If unavailable, substitute with `DELL` (Dell Technologies, traded as DELL in that era).
+
+**Note on NT (Nortel Networks):** Nortel is included as a non-survivor dot-com analog to structurally address survivorship bias. Nortel reached a peak market cap of ~$398B CAD in 2000, had comparable network infrastructure positioning to Cisco, and went bankrupt in January 2009. yfinance has Nortel price history under ticker `NT` (or `NRTLQ` post-delisting). Use available data up to delisting. If `NT` is unavailable, try `NORTEL.TO` on the Toronto exchange. Nortel's inclusion makes the downside scenario concrete: Cisco survived but stagnated; Nortel went to zero.
 
 ### 2.3 Market Indices
 
@@ -90,7 +93,7 @@ ai_data = yf.download(
 )
 
 # Bulk download for all dot-com tickers
-dotcom_tickers = ["CSCO", "JNPR", "QCOM", "INTC", "SUNW"]
+dotcom_tickers = ["CSCO", "JNPR", "QCOM", "INTC", "SUNW", "NT"]
 dotcom_data = yf.download(
     tickers=dotcom_tickers,
     start="1998-01-01",
@@ -234,6 +237,47 @@ def find_breakout(df: pd.DataFrame, threshold: float = 0.50, sustain_days: int =
 - **NVDA:** ~May-June 2023 (when the ChatGPT/AI demand became undeniable in price)
 - **CSCO:** ~October-November 1998 (early internet infrastructure boom acceleration)
 - These will be computed, not hardcoded. The above are sanity-check estimates.
+
+#### 4.3.1 Breakout Definition Sensitivity Analysis
+
+The breakout parameters (50% threshold, 20 sustain days) are chosen heuristically. To ensure results are robust to this choice, run sensitivity analysis across parameter combinations:
+
+| Threshold | Sustain Days | NVDA Breakout (est.) | CSCO Breakout (est.) | DTW Score Impact |
+|-----------|-------------|----------------------|----------------------|-----------------|
+| 40%       | 10          | Earlier (TBD)        | Earlier (TBD)        | Compute         |
+| 40%       | 20          | TBD                  | TBD                  | Compute         |
+| 40%       | 30          | TBD                  | TBD                  | Compute         |
+| 50%       | 10          | TBD                  | TBD                  | Compute         |
+| **50%**   | **20**      | **Default**          | **Default**          | **Baseline**    |
+| 50%       | 30          | TBD                  | TBD                  | Compute         |
+| 60%       | 10          | TBD                  | TBD                  | Compute         |
+| 60%       | 20          | TBD                  | TBD                  | Compute         |
+| 60%       | 30          | TBD                  | TBD                  | Compute         |
+
+```python
+def breakout_sensitivity(df: pd.DataFrame, thresholds=[0.40, 0.50, 0.60],
+                         sustain_list=[10, 20, 30]) -> pd.DataFrame:
+    """Test breakout date sensitivity to threshold and sustain_days parameters."""
+    results = []
+    for threshold in thresholds:
+        for sustain_days in sustain_list:
+            try:
+                breakout = find_breakout(df, threshold=threshold, sustain_days=sustain_days)
+                results.append({
+                    "threshold": threshold,
+                    "sustain_days": sustain_days,
+                    "breakout_date": breakout,
+                })
+            except ValueError:
+                results.append({
+                    "threshold": threshold,
+                    "sustain_days": sustain_days,
+                    "breakout_date": None,
+                })
+    return pd.DataFrame(results)
+```
+
+Report the range of breakout dates and the resulting DTW similarity scores. If the DTW score varies by more than 10 points across parameter combinations, flag this as a material sensitivity in the limitations.
 
 ### 4.4 Normalization to Index 100
 
@@ -381,7 +425,8 @@ def rolling_sharpe(returns: pd.Series, window: int = 252, risk_free_annual: floa
 | Chart type      | Line chart                                                   |
 | X-axis          | `days_from_breakout` (trading days since breakout), range: -60 to +780 |
 | Y-axis          | Normalized price (100 = breakout day price), log scale       |
-| Lines           | NVDA (solid, #76B900 -- NVIDIA green), CSCO (dashed, #049FD9 -- Cisco blue) |
+| Lines           | NVDA (solid, #76B900 -- NVIDIA green), CSCO (dashed, #EF553B -- coral red) |
+| Non-survivor    | NT / Nortel Networks (dashed, gray #888888, linewidth=1.5, label "Nortel (bankrupt 2009)") |
 | Peer lines      | AMD (dotted, thin, #ED1C24), QCOM (dotted, thin, #3253DC), alpha=0.4 |
 | Annotations     | Vertical dashed line at Day 0 labeled "Breakout"; annotation at CSCO peak (Day ~500) labeled "CSCO Peak: Mar 2000"; annotation at NVDA current position |
 | Title           | "AI Hype vs Dot-Com: Normalized Price Trajectories"          |
@@ -390,7 +435,7 @@ def rolling_sharpe(returns: pd.Series, window: int = 252, risk_free_annual: floa
 | Legend           | Upper left, outside plot area                                |
 | Figure size     | (14, 8)                                                      |
 | Shading         | Light red shading on the CSCO crash region (peak to -50%)    |
-| Insight         | Shows whether NVDA is tracking CSCO's trajectory, ahead of it, or behind it |
+| Insight         | Shows whether NVDA is tracking CSCO's trajectory, ahead of it, or behind it. Nortel (gray dashed) shows the non-survivor worst case -- what happens when fundamentals do NOT back the story. |
 
 ```python
 fig, ax = plt.subplots(figsize=(14, 8))
@@ -398,7 +443,13 @@ fig, ax = plt.subplots(figsize=(14, 8))
 ax.plot(nvda_weekly["days_from_breakout"], nvda_weekly["normalized_price"],
         color="#76B900", linewidth=2.5, label="NVDA (2023-2026)", zorder=5)
 ax.plot(csco_weekly["days_from_breakout"], csco_weekly["normalized_price"],
-        color="#049FD9", linewidth=2.5, linestyle="--", label="CSCO (1998-2002)", zorder=4)
+        color="#EF553B", linewidth=2.5, linestyle="--", label="CSCO (1998-2002)", zorder=4)
+
+# Non-survivor analog: Nortel Networks (gray dashed)
+nt_data = peers_weekly[peers_weekly["ticker"] == "NT"]
+ax.plot(nt_data["days_from_breakout"], nt_data["normalized_price"],
+        color="#888888", linewidth=1.5, linestyle="--", alpha=0.7,
+        label="Nortel (bankrupt 2009)", zorder=3)
 
 # Peer lines (thinner, more transparent)
 for ticker, color in [("AMD", "#ED1C24"), ("QCOM", "#3253DC")]:
@@ -435,7 +486,7 @@ fig, ax = plt.subplots(figsize=(14, 6))
 ax.fill_between(nvda_weekly["days_from_breakout"], nvda_weekly["drawdown"] * 100, 0,
                 color="#76B900", alpha=0.3, label="NVDA Drawdown")
 ax.fill_between(csco_weekly["days_from_breakout"], csco_weekly["drawdown"] * 100, 0,
-                color="#049FD9", alpha=0.3, label="CSCO Drawdown")
+                color="#EF553B", alpha=0.3, label="CSCO Drawdown")
 
 ax.axhline(y=-20, color="red", linestyle="--", alpha=0.5, label="Bear Market (-20%)")
 ax.set_xlabel("Trading Days from Breakout")
@@ -477,29 +528,60 @@ ax.grid(True, alpha=0.3)
 
 ## 7. Statistical Tests
 
-### 7.1 Pearson and Spearman Correlation
+### 7.1 DTW Similarity (PRIMARY Quantitative Measure)
 
-**What:** Correlation between NVDA's and CSCO's normalized price curves over the overlapping `days_from_breakout` range.
+**DTW is the primary quantitative similarity measure for this layer**, not Pearson correlation. DTW directly tests shape similarity of cumulative price trajectories, which is the core question. It handles the phase-shift problem (bubbles progress at different speeds) that correlation cannot address. See Section 3 of `06_ml_pipeline.md` for full DTW implementation. Report the DTW similarity score here with its null distribution context (reference scores against housing bubble, post-GFC, mid-90s rally, and COVID recovery periods).
+
+### 7.2 Pearson and Spearman Correlation of Log-Returns
+
+**What:** Correlation of **log-returns** (NOT normalized price levels) aligned by `days_from_breakout`. Correlating normalized price levels is statistically invalid -- two independent random walks will produce spuriously high Pearson r simply because both trend upward. This is the classic Granger-Newbold spurious regression problem.
+
+**CAVEAT:** If applied to price levels instead of returns, the correlation is spurious by construction. Always use stationary series (log-returns) for correlation analysis.
+
+**Stationarity check (required before computing correlation):**
 
 ```python
 from scipy import stats
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.stats.diagnostic import acorr_ljungbox
 
-# Align the two series on days_from_breakout
-overlap = merged.dropna(subset=["NVDA", "CSCO"])
+# Step 1: Align log-returns on days_from_breakout
+nvda_logret = nvda_daily.set_index("days_from_breakout")["log_return"]
+csco_logret = csco_daily.set_index("days_from_breakout")["log_return"]
+overlap_idx = nvda_logret.dropna().index.intersection(csco_logret.dropna().index)
+nvda_aligned = nvda_logret.loc[overlap_idx]
+csco_aligned = csco_logret.loc[overlap_idx]
 
-pearson_r, pearson_p = stats.pearsonr(overlap["NVDA"], overlap["CSCO"])
-spearman_r, spearman_p = stats.spearmanr(overlap["NVDA"], overlap["CSCO"])
+# Step 2: ADF test for stationarity (log-returns should be stationary)
+for label, series in [("NVDA log-returns", nvda_aligned), ("CSCO log-returns", csco_aligned)]:
+    adf_stat, adf_p, _, _, _, _ = adfuller(series.dropna())
+    print(f"{label}: ADF stat={adf_stat:.4f}, p={adf_p:.4e}")
+    assert adf_p < 0.05, f"FAIL: {label} is non-stationary -- do not use Pearson on this series"
 
-print(f"Pearson r = {pearson_r:.4f}, p = {pearson_p:.2e}")
-print(f"Spearman rho = {spearman_r:.4f}, p = {spearman_p:.2e}")
+# Step 3: Compute correlation on log-returns
+pearson_r, pearson_p = stats.pearsonr(nvda_aligned, csco_aligned)
+spearman_r, spearman_p = stats.spearmanr(nvda_aligned, csco_aligned)
+
+print(f"Pearson r (log-returns) = {pearson_r:.4f}, p = {pearson_p:.2e}")
+print(f"Spearman rho (log-returns) = {spearman_r:.4f}, p = {spearman_p:.2e}")
+
+# Step 4: Check for serial autocorrelation (Ljung-Box test)
+# Momentum during bubble phases induces autocorrelation in returns
+for label, series in [("NVDA", nvda_aligned), ("CSCO", csco_aligned)]:
+    lb_result = acorr_ljungbox(series.dropna(), lags=[10], return_df=True)
+    lb_p = lb_result["lb_pvalue"].iloc[0]
+    print(f"{label} Ljung-Box p-value (lag=10): {lb_p:.4f}")
+    if lb_p < 0.05:
+        print(f"  WARNING: {label} log-returns show significant autocorrelation. "
+              f"Pearson CI and p-value may be anti-conservative.")
 ```
 
 **Interpretation:**
-- Pearson r > 0.85: Trajectories are highly similar in magnitude
-- Spearman rho > 0.90: Trajectories are nearly identical in rank-order (direction)
-- Divergence between Pearson and Spearman indicates non-linear scaling differences
+- Pearson/Spearman on log-returns will likely be near zero or weakly positive -- this is expected and NOT a negative finding. Returns in different decades are not expected to correlate day-by-day.
+- The meaningful comparison is the DTW shape similarity (Section 7.1), not daily return correlation.
+- If Ljung-Box rejects i.i.d., report that the effective degrees of freedom are lower than the sample size and that the p-value is approximate.
 
-**Report:** Include both coefficients with p-values. State confidence intervals using Fisher z-transformation:
+**Report:** Include both coefficients with p-values, ADF test results for stationarity, and Ljung-Box Q-statistic for autocorrelation. State confidence intervals using Fisher z-transformation:
 
 ```python
 from scipy.stats import norm
@@ -515,7 +597,7 @@ def pearson_ci(r, n, alpha=0.05):
     return ci_low, ci_high
 ```
 
-### 7.2 Kolmogorov-Smirnov Test on Return Distributions
+### 7.3 Kolmogorov-Smirnov Test on Return Distributions
 
 **What:** Test whether NVDA's daily return distribution differs significantly from CSCO's at the equivalent cycle phase.
 
@@ -544,7 +626,7 @@ for label, returns in [("NVDA", nvda_returns), ("CSCO", csco_returns)]:
           f"skew={skew(returns):.3f}, kurtosis={kurtosis(returns):.3f}")
 ```
 
-### 7.3 Rolling Beta vs S&P 500
+### 7.4 Rolling Beta vs S&P 500
 
 **What:** How sensitive is each stock to broad market moves at each cycle phase?
 

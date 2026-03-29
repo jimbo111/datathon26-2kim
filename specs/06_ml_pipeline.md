@@ -108,7 +108,7 @@ For the regime classifier, we use **S&P 500** as the primary price series to mai
 
 | Feature | Source | Rationale |
 |---|---|---|
-| `pe_ratio_sp500` | S&P 500 trailing P/E from Shiller CAPE data / yfinance | Core valuation metric; P/E > 25 historically rare outside bubbles |
+| `log_pe_sp500` | log(S&P 500 trailing P/E) -- use log transform, NOT clipped P/E | Core valuation metric; log transform handles right-skew and preserves extreme values (see Layer 2 fix). P/E > 25 historically rare outside bubbles |
 | `pe_percentile` | Percentile rank of current P/E within expanding 10-year window | Normalizes for secular P/E drift |
 | `cape_shiller` | Cyclically-adjusted P/E (10-year avg earnings) | Smooths earnings cycle; >30 historically dangerous |
 | `revenue_growth_yoy` | YoY revenue growth of S&P 500 or focus stock | Real revenue backing vs. pure speculation |
@@ -166,7 +166,18 @@ For the regime classifier, we use **S&P 500** as the primary price series to mai
 
 **Feature matrix shape:** `(384, 38)` for training — 384 monthly observations (Jan 1990 - Jun 2024) x 38 features.
 
-**Note:** Sentiment features (Layer 5) are only available from ~2004 (Google Trends) or ~2012 (Reddit). For earlier periods, these features are imputed with neutral values (0.5 for ratios, median for indices) and a binary `has_sentiment_data` flag is added.
+**Note on Sentiment Features (REVISED -- DO NOT IMPUTE):**
+
+Sentiment features (Layer 5) are only available from ~2004 (Google Trends) or ~2012 (Reddit). **Do NOT impute pre-2004 sentiment with median values.** Median imputation introduces two problems: (1) the median is computed from 2012+ data, leaking future information into pre-2004 observations, and (2) a binary `has_sentiment_data` flag teaches the model that "data before 2004 = no sentiment" as a proxy for the era itself.
+
+**Instead, train TWO models:**
+
+| Model | Features | Training Period | Purpose |
+|-------|----------|-----------------|---------|
+| **Core Model** | 31 features (price + fundamentals + concentration + macro) | Jan 1990 - Jun 2024 (full timeline) | Primary regime classifier -- uses only universally available features |
+| **Augmented Model** | 38 features (core + sentiment) | Jan 2004 - Jun 2024 (post-Google Trends) | Secondary model -- tests whether sentiment features change the classification |
+
+Compare their bubble probability for March 2026 as a sensitivity check. If both models agree (within 5-10pp), the finding is robust regardless of sentiment data. If they diverge significantly, report both and discuss which features drive the divergence.
 
 ### 2.4 Preprocessing
 
@@ -188,12 +199,16 @@ def build_feature_matrix(price_df, fundamental_df, concentration_df, macro_df, s
         .join(sentiment_df.resample('ME').last(), how='left')  # left join: sentiment has gaps
     )
 
-    # Impute missing sentiment with median + flag
+    # DO NOT impute missing sentiment -- train two separate models instead.
+    # Core model: drop sentiment columns entirely (available 1990-present)
+    # Augmented model: keep sentiment columns, restrict to post-2004 data only
     sentiment_cols = ['ai_mention_rate', 'hype_score', 'specificity_score',
                       'google_trends_ai', 'google_trends_bubble',
                       'reddit_sentiment', 'reddit_volume']
-    features['has_sentiment_data'] = features[sentiment_cols].notna().any(axis=1).astype(int)
-    features[sentiment_cols] = features[sentiment_cols].fillna(features[sentiment_cols].median())
+
+    # Return both versions
+    features_core = features.drop(columns=sentiment_cols, errors='ignore')
+    features_augmented = features.dropna(subset=sentiment_cols, how='all')  # Post-2004 only
 
     # Forward-fill macro data (released with lag)
     macro_cols = ['fed_funds_rate', 'm2_growth_yoy', 'credit_spread_baa']
@@ -264,7 +279,14 @@ xgb_model = XGBClassifier(
     eval_metric='mlogloss',
     random_state=42,
     n_jobs=-1,
-    early_stopping_rounds=50,
+    # NOTE: early_stopping_rounds REMOVED from constructor.
+    # early_stopping_rounds requires eval_set to be passed via fit(),
+    # which GridSearchCV does NOT do by default. Including it here will
+    # either throw an error or silently ignore early stopping during grid search.
+    # Use early stopping ONLY in the final training step (after grid search)
+    # by calling fit() with eval_set explicitly:
+    #   best_xgb.fit(X_train, y_train, eval_set=[(X_val, y_val)],
+    #                early_stopping_rounds=50, verbose=False)
 )
 ```
 
@@ -310,7 +332,49 @@ lr_param_grid = {
 }
 ```
 
-### 2.6 Train/Test Split Strategy
+### 2.6 Price-Feature-Excluded Model Variant (REQUIRED)
+
+**Purpose:** Address the circular reasoning critique (CRITIQUE_RIGOR Issue 2). The training labels are defined using known price outcomes. Price-derived features (`momentum_*`, `drawdown_from_ath`, `rsi_14`, `price_to_sma200`, `volatility_*`) encode the same price trajectory information used to define the labels. To test whether the model is learning something beyond this tautology, train a variant that excludes ALL price-derived features.
+
+**Implementation:** Train two models side-by-side:
+
+| Model | Features Included | Purpose |
+|-------|-------------------|---------|
+| **Full Model** | All 38 features | Primary result |
+| **Price-Excluded Model** | 29 features (exclude: `momentum_30d`, `momentum_90d`, `momentum_252d`, `volatility_30d`, `volatility_90d`, `drawdown_from_ath`, `rsi_14`, `price_to_sma200`, `return_skewness`) | Tests whether bubble signal persists without price features |
+
+```python
+PRICE_FEATURES = [
+    'momentum_30d', 'momentum_90d', 'momentum_252d',
+    'volatility_30d', 'volatility_90d',
+    'drawdown_from_ath', 'rsi_14', 'price_to_sma200', 'return_skewness',
+]
+
+# Train price-excluded model
+X_train_no_price = X_train.drop(columns=PRICE_FEATURES)
+X_live_no_price = X_live.drop(columns=PRICE_FEATURES)
+
+rf_no_price = RandomForestClassifier(**best_rf.get_params())
+rf_no_price.fit(scaler_no_price.fit_transform(X_train_no_price), y_train)
+
+# Compare bubble probability with and without price features
+probs_full = best_rf.predict_proba(X_live_scaled[-1:])[0]
+probs_no_price = rf_no_price.predict_proba(
+    scaler_no_price.transform(X_live_no_price.iloc[-1:])
+)[0]
+
+bubble_idx = list(classes).index('bubble')
+print(f"Bubble probability (full model): {probs_full[bubble_idx]:.1%}")
+print(f"Bubble probability (no price features): {probs_no_price[bubble_idx]:.1%}")
+print(f"Difference: {abs(probs_full[bubble_idx] - probs_no_price[bubble_idx]):.1%}")
+```
+
+**Interpretation:**
+- If bubble probability barely changes (within 5-10pp), the bubble signal comes from fundamentals, concentration, macro, and sentiment -- a much stronger claim.
+- If bubble probability drops dramatically (>15pp), the circular reasoning is the main driver -- acknowledge this explicitly in the limitations.
+- **Present both models** in the notebook and slides. This is the single most impactful robustness check for the regime classifier's credibility.
+
+### 2.7 Train/Test Split Strategy
 
 **CRITICAL: Never random split time series data.** Future data leaks into training with random splits.
 
@@ -326,7 +390,7 @@ Timeline:  1990 ──────────── 2018 ── 2022 ───�
 | Test | Jan 2022 - Jun 2024 | ~30 months | Final evaluation (2022 bear + AI rally — model never saw these) |
 | Live | Jul 2024 - Mar 2026 | ~21 months | **The answer** — classify current period |
 
-### 2.7 Cross-Validation Strategy
+### 2.8 Cross-Validation Strategy
 
 Use `TimeSeriesSplit` to respect temporal ordering during hyperparameter search.
 
@@ -365,7 +429,7 @@ Fold 4: Train [1990-01 to 2012-09] | Gap [2012-10 to 2012-12] | Val [2013-01 to 
 Fold 5: Train [1990-01 to 2014-12] | Gap [2015-01 to 2015-03] | Val [2015-04 to 2017-03]
 ```
 
-### 2.8 Evaluation Metrics
+### 2.9 Evaluation Metrics
 
 #### Primary Metrics
 
@@ -396,7 +460,7 @@ normal_growth        0.XX      0.XX      0.XX        N
 - `normal_growth` vs `recovery` will likely be confused (similar features, different trajectory)
 - Acceptable if `bubble` precision > 0.80 even if `recovery` recall is low
 
-### 2.9 The Punchline: "What Does the Model Classify TODAY As?"
+### 2.10 The Punchline: "What Does the Model Classify TODAY As?"
 
 This is the money shot for the presentation. After training and validation:
 
@@ -443,7 +507,7 @@ live_probs = pd.DataFrame(
 # Plot as stacked area chart (see Chart ML.1 in 07_visualization_plan.md)
 ```
 
-### 2.10 Full Training Pipeline Code Outline
+### 2.11 Full Training Pipeline Code Outline
 
 ```python
 import pandas as pd
@@ -755,16 +819,70 @@ def multivariate_dtw_similarity(matrix_dotcom, matrix_ai):
     return similarity
 ```
 
-### 3.9 Comparison Against Other Historical Periods
+### 3.9 DTW Null Distribution and Statistical Significance (REQUIRED)
 
-To calibrate the score, compute DTW similarity of the AI era against multiple historical periods:
+**Problem:** A DTW similarity score of "72/100" is meaningless without a reference distribution. What does 72 mean? Is it statistically distinguishable from 60?
+
+**Solution:** Establish the score's meaning through two approaches:
+
+#### A. Reference Period Comparisons
+
+Compute DTW similarity of the AI era against 3-5 other historical periods to provide context:
 
 | Comparison | Expected Similarity | Purpose |
 |---|---|---|
 | AI era vs Dot-com (1998-2001) | **Primary analysis** | The core research question |
 | AI era vs Housing bubble (2005-2008) | Lower (different sector dynamics) | Calibration baseline |
 | AI era vs Post-GFC recovery (2009-2013) | Moderate (growth story) | "Normal" growth baseline |
+| AI era vs Mid-1990s tech rally (1995-1998) | Moderate | Pre-bubble growth comparison |
 | AI era vs COVID recovery (2020-2022) | Moderate-high (stimulus-driven tech rally) | Recent comparison |
+
+A score of 72 vs. dot-com becomes meaningful when you can show the AI era scores only 35 vs. post-GFC and 48 vs. housing bubble. Label the score honestly: "Similarity Index (higher = more similar to dot-com pattern)" -- do not imply a probabilistic interpretation.
+
+#### B. Permutation Test for Empirical P-Value
+
+Randomly shuffle the AI-era time series 1,000 times and recompute DTW. The empirical p-value (fraction of random shuffles with DTW distance <= observed distance) gives statistical grounding.
+
+```python
+def dtw_permutation_test(series_dotcom: np.ndarray, series_ai: np.ndarray,
+                          n_permutations: int = 1000, seed: int = 42) -> dict:
+    """
+    Permutation test for DTW similarity.
+    H0: The observed DTW distance is no smaller than what random chance would produce.
+    """
+    rng = np.random.RandomState(seed)
+
+    # Observed DTW distance
+    observed_distance = dtw.distance(series_dotcom.astype(np.float64),
+                                      series_ai.astype(np.float64))
+
+    # Generate null distribution by shuffling the AI-era series
+    null_distances = []
+    for _ in range(n_permutations):
+        shuffled = rng.permutation(series_ai)
+        null_dist = dtw.distance(series_dotcom.astype(np.float64),
+                                  shuffled.astype(np.float64))
+        null_distances.append(null_dist)
+
+    # Empirical p-value: fraction of null distances <= observed
+    p_value = np.mean(np.array(null_distances) <= observed_distance)
+
+    # Convert to similarity for interpretability
+    path_length = np.sqrt(len(series_dotcom) * len(series_ai))
+    observed_similarity = max(0, (1 - observed_distance / path_length)) * 100
+    null_similarities = [max(0, (1 - d / path_length)) * 100 for d in null_distances]
+
+    return {
+        "observed_distance": observed_distance,
+        "observed_similarity": observed_similarity,
+        "p_value": p_value,
+        "null_mean_similarity": np.mean(null_similarities),
+        "null_std_similarity": np.std(null_similarities),
+        "percentile": (1 - p_value) * 100,  # "AI-vs-dotcom similarity is in the Xth percentile"
+    }
+```
+
+**Report:** "The AI-era trajectory has a DTW similarity of X to the dot-com pattern, placing it in the Yth percentile of all historical pairwise comparisons (permutation test p = Z)." This transforms the headline number from an arbitrary scale into a statistically defensible claim.
 
 ---
 
@@ -1003,7 +1121,74 @@ train_sizes, train_scores, val_scores = learning_curve(
 )
 ```
 
-### 5.4 Ensemble Agreement Check
+### 5.4 Benjamini-Hochberg Multiple Comparisons Correction (REQUIRED)
+
+**Problem:** Across all 5 data layers + ML pipeline, we run 15-20+ statistical tests. With alpha=0.05 and 20 independent tests, the probability of at least one false positive by chance alone is 64%. Without correction, every reported p-value is suspect.
+
+**Solution:** Collect ALL p-values from ALL layers into a single table, apply Benjamini-Hochberg FDR correction, and report both raw and adjusted p-values.
+
+```python
+from statsmodels.stats.multitest import multipletests
+
+def apply_bh_correction(all_test_results: list[dict]) -> pd.DataFrame:
+    """
+    Collect all p-values across all layers and apply Benjamini-Hochberg correction.
+
+    Parameters:
+        all_test_results: list of dicts with keys: 'layer', 'test_name', 'raw_p_value'
+
+    Returns:
+        DataFrame with raw and BH-adjusted p-values
+    """
+    df = pd.DataFrame(all_test_results)
+
+    # Apply Benjamini-Hochberg correction
+    reject, pvals_corrected, _, _ = multipletests(
+        df['raw_p_value'],
+        alpha=0.05,
+        method='fdr_bh'
+    )
+
+    df['bh_adjusted_p'] = pvals_corrected
+    df['significant_after_correction'] = reject
+    df['significant_raw'] = df['raw_p_value'] < 0.05
+
+    # Flag findings that lose significance after correction
+    df['lost_significance'] = df['significant_raw'] & ~df['significant_after_correction']
+
+    print("=== Multiple Comparisons Correction (Benjamini-Hochberg) ===")
+    print(f"Total tests: {len(df)}")
+    print(f"Significant at raw alpha=0.05: {df['significant_raw'].sum()}")
+    print(f"Significant after BH correction: {df['significant_after_correction'].sum()}")
+    print(f"Lost significance after correction: {df['lost_significance'].sum()}")
+    print()
+    print(df[['layer', 'test_name', 'raw_p_value', 'bh_adjusted_p',
+              'significant_after_correction']].to_string(index=False))
+
+    return df
+
+# Collect all p-values from all layers (fill in during implementation):
+all_tests = [
+    {"layer": "L1-Price", "test_name": "Pearson log-returns", "raw_p_value": None},
+    {"layer": "L1-Price", "test_name": "Spearman log-returns", "raw_p_value": None},
+    {"layer": "L1-Price", "test_name": "KS test returns", "raw_p_value": None},
+    {"layer": "L1-Price", "test_name": "DTW permutation test", "raw_p_value": None},
+    {"layer": "L2-Fundamentals", "test_name": "t-test log(P/E)", "raw_p_value": None},
+    {"layer": "L2-Fundamentals", "test_name": "t-test P/S ratio", "raw_p_value": None},
+    {"layer": "L2-Fundamentals", "test_name": "Chow test structural break", "raw_p_value": None},
+    {"layer": "L3-Concentration", "test_name": "Mann-Whitney concentration", "raw_p_value": None},
+    {"layer": "L3-Concentration", "test_name": "Concentration-drawdown corr", "raw_p_value": None},
+    {"layer": "L4-Macro", "test_name": "Welch t-test (per indicator)", "raw_p_value": None},
+    {"layer": "L4-Macro", "test_name": "Granger causality YC->SP500", "raw_p_value": None},
+    {"layer": "L5-Sentiment", "test_name": "Hype-price correlation", "raw_p_value": None},
+    {"layer": "L5-Sentiment", "test_name": "Mann-Whitney sentiment", "raw_p_value": None},
+    # Add more as tests are run
+]
+```
+
+**Reporting:** Include a "Statistical Tests Summary" table in the notebook (Section 5 or 6) showing all tests with raw and adjusted p-values. Any finding whose adjusted p-value exceeds 0.05 should be downgraded from "statistically significant evidence" to "suggestive pattern." This single addition adds more perceived rigor than almost any other change in the spec.
+
+### 5.5 Ensemble Agreement Check
 
 Do all three models agree on the current regime? Disagreement is informative.
 

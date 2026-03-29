@@ -225,11 +225,43 @@ def compute_derived_metrics(unified: pd.DataFrame) -> pd.DataFrame:
         )
 
         # GDP year-over-year growth rate
+        # IMPORTANT FIX: GDP from FRED is a quarterly series (SAAR).
+        # Computing pct_change(periods=12) on forward-filled monthly GDP is WRONG --
+        # it creates artificial 9-month flat stretches followed by jumps.
+        # CORRECT approach: compute pct_change(periods=4) on the raw QUARTERLY GDP
+        # series BEFORE forward-filling, then merge the result to monthly.
+        #
+        # Implementation: compute YoY growth on the quarterly GDP series separately,
+        # then forward-fill to monthly for the unified DataFrame.
+        # See _compute_gdp_yoy_growth() below.
+        #
+        # The line below is a PLACEHOLDER -- replace with the pre-computed quarterly
+        # GDP growth merged into the monthly frame:
         unified.loc[mask, "gdp_yoy_growth"] = (
-            unified.loc[mask, "gdp"].pct_change(periods=12) * 100
+            unified.loc[mask, "gdp_yoy_quarterly_ffilled"]  # Pre-computed, see helper below
         )
 
     return unified
+
+
+def compute_gdp_yoy_growth(gdp_quarterly_raw: pd.Series) -> pd.Series:
+    """
+    Compute GDP YoY growth correctly from raw quarterly FRED GDP data.
+
+    FRED GDP series is already Seasonally Adjusted Annual Rate (SAAR).
+    Apply pct_change(periods=4) to the QUARTERLY series (4 quarters = 1 year),
+    THEN forward-fill to monthly frequency.
+
+    DO NOT use pct_change(periods=12) on forward-filled monthly data -- this
+    produces artificial flat stretches and is a common error.
+    """
+    # GDP is quarterly -- compute YoY growth at quarterly frequency
+    gdp_yoy_quarterly = gdp_quarterly_raw.pct_change(periods=4) * 100
+
+    # Forward-fill to monthly for merging into the unified monthly DataFrame
+    gdp_yoy_monthly = gdp_yoy_quarterly.resample("ME").ffill()
+
+    return gdp_yoy_monthly
 ```
 
 ### 4.4 Step 4: Peak Alignment (Critical)
@@ -632,7 +664,59 @@ summary_df = pd.DataFrame(results)
 
 **Hypothesis:** H0: Mean(dot-com) = Mean(AI era) for each indicator. Expect to reject H0 for real interest rate, M2 growth, and CPI inflation.
 
-### 7.3 Lead-Lag Analysis: Macro Indicators Leading Market Peaks
+### 7.3 Macro-Equity Association Matrix (Replaces Cosine Similarity)
+
+**Previous approach (deprecated):** The original spec proposed cosine similarity of "macro regime vectors" to compare eras. This is problematic: cosine similarity treats all macro variables as equally predictive, is not a statistical test with a p-value, and depends heavily on which variables are included and how they are normalized.
+
+**Replacement approach:** Compute Pearson and Spearman correlation between each macro variable and the 12-month-forward S&P 500 return, separately for each era. This provides directional evidence for each macro-equity relationship and frames findings as measurable associations.
+
+```python
+from scipy import stats
+
+def macro_equity_correlation_matrix(unified: pd.DataFrame,
+                                      sp500_daily: pd.Series,
+                                      indicators: list[str]) -> pd.DataFrame:
+    """
+    For each era, compute correlation between each macro variable
+    and 12-month-forward equity return.
+
+    FRAMING: These are ASSOCIATIONS, not causal relationships.
+    """
+    results = []
+    for era in ["dotcom", "ai"]:
+        era_df = unified[unified["era"] == era].sort_values("date")
+
+        for col in indicators:
+            # Compute 12-month forward S&P 500 return for each observation
+            forward_returns = []
+            macro_values = []
+            for i, (date, row) in enumerate(era_df.iterrows()):
+                future_date = date + pd.DateOffset(months=12)
+                future_prices = sp500_daily.loc[date:future_date]
+                if len(future_prices) >= 200:
+                    fwd_ret = (future_prices.iloc[-1] / future_prices.iloc[0] - 1) * 100
+                    forward_returns.append(fwd_ret)
+                    macro_values.append(row[col])
+
+            if len(forward_returns) >= 10:
+                pearson_r, pearson_p = stats.pearsonr(macro_values, forward_returns)
+                spearman_r, spearman_p = stats.spearmanr(macro_values, forward_returns)
+                results.append({
+                    "era": era,
+                    "indicator": col,
+                    "pearson_r": pearson_r,
+                    "pearson_p": pearson_p,
+                    "spearman_r": spearman_r,
+                    "spearman_p": spearman_p,
+                    "n_observations": len(forward_returns),
+                })
+
+    return pd.DataFrame(results)
+```
+
+**Report as a table:** For each macro variable, show the correlation with forward equity returns in each era. Highlight any variable where the sign flips between eras (e.g., if tight credit spreads are associated with positive forward returns in dot-com but negative in AI era -- this signals a regime change).
+
+### 7.4 Lead-Lag Analysis: Macro Indicators Leading Market Peaks
 
 **Question:** Do macro indicators shift before or after the equity market peaks?
 
@@ -677,12 +761,19 @@ for col in indicators:
 - Credit spread widening is coincident or slightly lagging (confirms rather than predicts)
 - Fed funds rate changes lead equity moves by 6-9 months (monetary policy transmission lag)
 
-### 7.4 Granger Causality: Yield Curve -> Equity Drawdowns
+### 7.5 Granger Causality: Yield Curve -> Equity Drawdowns
 
 **Question:** Does the yield curve spread Granger-cause equity market drawdowns?
 
+**IMPORTANT:** Granger causality is NOT true causality. It only tests whether one time series has predictive power for another beyond the latter's own history. Frame all findings as "the yield curve has predictive power for equity returns" -- never as "the yield curve causes equity declines."
+
+**Prerequisites (must be satisfied before running Granger test):**
+1. Both series must be stationary (ADF test, p < 0.05). Yield curve spread is typically I(0). S&P 500 prices are I(1) -- use returns, not levels.
+2. Lag selection: use AIC/BIC on a VAR model to determine optimal lag, rather than testing all lags 1-6 and cherry-picking the significant one.
+
 ```python
-from statsmodels.tsa.stattools import grangercausalitytests
+from statsmodels.tsa.stattools import grangercausalitytests, adfuller
+from statsmodels.tsa.api import VAR
 
 for era in ["dotcom", "ai"]:
     era_df = unified[unified["era"] == era].sort_values("date").dropna(
@@ -691,27 +782,40 @@ for era in ["dotcom", "ai"]:
     sp500_returns = era_df["sp500"].pct_change().dropna()
     yc = era_df["yield_curve_spread"].iloc[1:]  # align with returns
 
-    # Granger test: does yield_curve_spread Granger-cause sp500_returns?
-    # Test up to 6 lags (6 months)
     data = pd.DataFrame({
         "sp500_returns": sp500_returns.values,
         "yield_curve": yc.values,
     }).dropna()
 
-    results = grangercausalitytests(data[["sp500_returns", "yield_curve"]], maxlag=6)
-    # Extract p-values for each lag
-    for lag in range(1, 7):
+    # Step 1: Stationarity check (ADF test)
+    for col in ["sp500_returns", "yield_curve"]:
+        adf_stat, adf_p, _, _, _, _ = adfuller(data[col].dropna())
+        print(f"{era} {col}: ADF stat={adf_stat:.4f}, p={adf_p:.4e}")
+        if adf_p > 0.05:
+            print(f"  WARNING: {col} is non-stationary. Granger test results may be spurious.")
+
+    # Step 2: Optimal lag selection using AIC on VAR model
+    var_model = VAR(data[["sp500_returns", "yield_curve"]])
+    lag_order_results = var_model.select_order(maxlags=12)
+    optimal_lag = lag_order_results.aic
+    print(f"{era}: Optimal lag by AIC = {optimal_lag}")
+
+    # Step 3: Granger test at optimal lag (and report lags 1-6 for robustness)
+    results = grangercausalitytests(data[["sp500_returns", "yield_curve"]],
+                                     maxlag=min(6, max(optimal_lag, 1)))
+    for lag in range(1, min(7, max(optimal_lag + 1, 2))):
         f_stat = results[lag][0]["ssr_ftest"][0]
         p_val = results[lag][0]["ssr_ftest"][1]
-        # Report: "Lag {lag}: F={f_stat:.2f}, p={p_val:.4f}"
+        print(f"{era} Lag {lag}: F={f_stat:.2f}, p={p_val:.4f}")
 ```
 
 **Interpretation:**
-- p < 0.05 at lag k means: yield curve spread k months ago has statistically significant predictive power for current equity returns, beyond what past equity returns alone can explain.
+- p < 0.05 at the AIC-selected lag means: yield curve spread has statistically significant predictive power for equity returns at that horizon, beyond what past equity returns alone can explain.
 - We expect significance at lags 3-6 for the dot-com era (well-documented).
 - For the AI era, the result is the finding: if significant, the yield curve is warning. If not, markets may be ignoring the signal.
+- **Framing:** Report as "the yield curve spread has (or lacks) predictive power for equity returns" -- an association, not a causal claim.
 
-### 7.5 Levene's Test for Variance Differences
+### 7.6 Levene's Test for Variance Differences
 
 Test whether the volatility of macro indicators differs between eras.
 
@@ -766,11 +870,15 @@ The macro environment narrative to build into the final presentation:
 - Post-2008 unconventional monetary policy (QE, ZIRP) means the relationship between short rates, long rates, and equity markets may have permanently changed.
 - The yield curve's predictive power may be diminished in an era of central bank balance sheet management.
 
-### 9.5 Endogeneity
+### 9.5 Endogeneity and Causal Framing
 
+**EXPLICIT FRAMING REQUIREMENT:** ALL macro findings in this layer are associations, not causal claims. The language "M2 growth fuels speculation" or "negative real rates incentivize risk-taking" implies causation -- rewrite all such statements as "M2 growth is associated with higher speculative activity" and "negative real rates coincide with increased risk-taking." This distinction is critical for academic credibility.
+
+Specific guidelines:
 - Macro conditions and market prices are endogenous. The Fed responds to market conditions; markets respond to the Fed.
 - Granger causality is NOT true causality. It only measures predictive power in time series.
-- We should frame all findings as "associations" or "leading indicators," never as causal claims.
+- Frame all findings as "associations," "leading indicators," or "coincident patterns" -- never as causal claims.
+- When presenting to judges, say "the yield curve has historically led equity drawdowns" not "the yield curve causes equity drawdowns."
 
 ### 9.6 Cherry-picking Risk
 

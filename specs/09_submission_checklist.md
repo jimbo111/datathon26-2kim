@@ -50,7 +50,7 @@ The notebook MUST follow the 7-section structure plus the mandatory citation cel
 - [ ] **Layer 1 -- Price Overlay:**
   - [ ] Dual-line chart: NVDA vs CSCO normalized to 100 (x-axis = trading days since t=0)
   - [ ] Annotate CSCO peak (Mar 27, 2000, day ~550) and any NVDA milestones
-  - [ ] Report Pearson correlation coefficient and p-value for daily returns
+  - [ ] Report DTW similarity score as primary quantitative measure; Pearson/Spearman correlation of log-returns as secondary
   - [ ] Caption stating the finding
 - [ ] **Layer 2 -- Fundamentals:**
   - [ ] Grouped bar chart: P/E, P/S at comparable rally stages (t+250, t+500, t+750)
@@ -127,6 +127,7 @@ The notebook MUST follow the 7-section structure plus the mandatory citation cel
 - [ ] Overall verdict paragraph: "Based on X of 5 layers showing strong similarity..."
 - [ ] Explicitly state what makes NVDA different from CSCO (the nuance)
 - [ ] Practical implications for investors (actionable, not just academic)
+- [ ] **Executive Summary cell** immediately after Section 6: top 3 findings in 3 sentences (e.g., "Finding 1: DTW similarity of X/100. Finding 2: NVDA P/E is Xx lower than CSCO at equivalent stages. Finding 3: Market concentration exceeds dot-com peak."). This is what judges will actually read.
 - [ ] **Rubric alignment:** Presentation Clarity & Storytelling (15pts)
 
 ### Section 7: Limitations, Ethics & Future Work
@@ -186,6 +187,12 @@ Each citation below is pre-formatted for MLA 8. Replace bracketed values with ac
 ```
 "Cisco Systems, Inc. (CSCO) Historical Data." Yahoo Finance, Verizon Media,
     finance.yahoo.com/quote/CSCO/history. Accessed 28 Mar. 2026.
+```
+
+### yfinance (Nortel Networks — Non-Survivor Analog)
+```
+"Nortel Networks Corporation (NT) Historical Data." Yahoo Finance, Verizon Media,
+    finance.yahoo.com/quote/NRTLQ/history. Accessed 28 Mar. 2026.
 ```
 
 ### yfinance (S&P 500 Index)
@@ -319,9 +326,9 @@ jupyter nbconvert --to notebook --execute submissions/2kim_finance_notebook.ipyn
 ## 4. Slideshow Requirements Checklist
 
 - [ ] **Format:** .pptx or .pdf (PowerPoint or Google Slides export)
-- [ ] **Slide count:** 15-16 slides (see `00_project_overview.md` Section: Slideshow Sections)
+- [ ] **Slide count:** 16 slides (1 title + 14 content + 1 close) + 2 backup not shown in main presentation (see `08_presentation_narrative.md`)
 - [ ] **Title slide includes:** project title, team name (2Kim), track (Finance & Economics), date, SBU AI Community Datathon 2026
-- [ ] **Every chart** from the notebook that appears in slides uses the same color scheme (NVDA green `#76b900`, CSCO blue `#049fd9`)
+- [ ] **Every chart** from the notebook that appears in slides uses the same color scheme (NVDA green `#76b900` light bg / `#00CC96` dark bg, CSCO coral red `#EF553B`)
 - [ ] **Every chart** has a title, axis labels, and legend
 - [ ] **No wall of text** -- slides should be visual-heavy, text-light
 - [ ] **Speaker notes** included for each slide (for reference during presentation, if applicable)
@@ -338,21 +345,22 @@ jupyter nbconvert --to notebook --execute submissions/2kim_finance_notebook.ipyn
 | # | Title | Must Include |
 |---|---|---|
 | 1 | Title | Project title, team, track, date |
-| 2 | The Hook | NVDA vs CSCO price overlay chart |
-| 3 | Research Question | Verbatim research question + hypothesis |
-| 4 | Data & Methods | Data sources table (7+ sources), pipeline diagram |
-| 5 | Price Overlay | Layer 1 chart, Pearson r, key dates annotated |
-| 6 | Price Insight | What the price similarity means and doesn't mean |
-| 7 | Fundamentals | Layer 2 grouped bar charts, t-test result |
-| 8 | Fundamentals Insight | "NVDA is [not] like CSCO because..." |
-| 9 | Concentration | Layer 3 area chart, z-score comparison |
-| 10 | Macro Environment | Layer 4 2x2 panel, cosine similarity |
-| 11 | Sentiment | Layer 5 radar + Google Trends + Reddit chart |
-| 12 | ML: Regime + DTW | Regime classification chart + DTW warping path |
-| 13 | Bubble Scorecard | Full scorecard table with traffic-light colors |
-| 14 | Limitations | Top 4 limitations, correlation vs causation call-out |
-| 15 | Conclusion | Nuanced verdict, practical implications |
-| 16 | References | Abbreviated MLA 8 citations |
+| 2 | The Hook | NVDA (green) vs CSCO (coral red) price overlay + Nortel (gray dashed) |
+| 3 | Research Framework | Five-layer diagram, one-line question per layer |
+| 4 | Data & Methods | Data sources table (7+ sources), methodology summary (15 sec) |
+| 5 | P/E Comparison (Bull) | Layer 2 chart, CSCO 200x vs NVDA [X]x |
+| 6 | Revenue Growth | Layer 2 grouped bars, 265% vs 66% stat callout |
+| 7 | Concentration (Bear) | Layer 3 area chart + SPY/RSP, z-score, Buffett Indicator stat verbal |
+| 8 | Sentiment | Layer 5: AI mentions + hype vs specificity charts |
+| 9 | Macro Wild Card | Layer 4 macro dashboard small multiples |
+| 10 | ML: Regime Classification | Regime probabilities stacked area, March 2026 readout |
+| 11 | ML: DTW + SHAP | DTW similarity timeline + SHAP waterfall |
+| 12 | Synthesis | Bubble scorecard table with traffic-light colors |
+| 13 | Key Takeaway | One-sentence verdict, large quote text |
+| 14 | Limitations & Ethics | Top 4 limitations, correlation vs causation, not financial advice |
+| 15 | Thank You / Q&A | Contact info, notebook reference, dashboard available |
+| 16 (backup) | SHAP Deep Dive | SHAP beeswarm plot, available if judge asks |
+| 17 (backup) | Methodology | Walk-forward validation, confusion matrix |
 
 ---
 
@@ -371,7 +379,7 @@ jupyter nbconvert --to notebook --execute submissions/2kim_finance_notebook.ipyn
 | Deliverable | Points toward |
 |---|---|
 | 10+ distinct Plotly visualizations across 5 data layers | Strongest EDA |
-| Pearson correlation on returns (Layer 1) | Correct stats |
+| DTW similarity score (primary) + Pearson/Spearman on log-returns (secondary) (Layer 1) | Correct stats |
 | Two-sample t-test on revenue growth (Layer 2) | Correct stats |
 | Z-score comparison of concentration (Layer 3) | Correct stats |
 | Cosine similarity of macro vectors (Layer 4) | Correct stats |
@@ -455,7 +463,7 @@ jupyter nbconvert --to notebook --execute submissions/2kim_finance_notebook.ipyn
 | Deliverable | Points toward |
 |---|---|
 | Every section starts with a question, ends with an answer | Clear structure |
-| Consistent color scheme (NVDA green, CSCO blue) across all charts | Readable visuals |
+| Consistent color scheme (NVDA green `#76b900`/`#00CC96`, CSCO coral red `#EF553B`) across all charts | Readable visuals |
 | Story arc: hook -> evidence -> nuance -> verdict | Narrative flow |
 | Bubble scorecard as the synthesis artifact | Clear conclusion |
 | Slideshow follows the notebook structure | Consistency |
@@ -572,7 +580,7 @@ For every chart in the notebook:
 - [ ] X-axis and Y-axis are labeled with units
 - [ ] Legend present if multiple series
 - [ ] Font size readable (>= 12pt)
-- [ ] Color scheme matches the standard (NVDA = `#76b900`, CSCO = `#049fd9`)
+- [ ] Color scheme matches the standard (NVDA = `#76b900` / `#00CC96`, CSCO = `#EF553B` coral red)
 - [ ] Caption in the Markdown cell below the chart stating the key finding
 - [ ] No truncated labels or overlapping text
 
@@ -600,6 +608,7 @@ For every statistical test reported:
 
 - [ ] All API calls have explicit parameters (dates, tickers, series IDs)
 - [ ] Fallback to cached .parquet files if API is unavailable
+- [ ] **Cache-or-call pattern verified for ALL API calls:** every API call follows `if Path("data/raw/<file>.parquet").exists(): load cache; else: call API, cache result, return data`. Verify by disconnecting network and running `Restart & Run All` — notebook should complete from cache alone.
 - [ ] `requirements.txt` is up to date with all packages used
 - [ ] No hardcoded absolute paths (use relative paths or `pathlib`)
 - [ ] No cells depend on execution order (each cell is idempotent or clearly sequential)
@@ -609,7 +618,7 @@ For every statistical test reported:
 
 - [ ] File exists: `submissions/2kim_finance_slides.pptx`
 - [ ] Opens correctly in PowerPoint / Google Slides / LibreOffice
-- [ ] 15-16 slides
+- [ ] 16 slides (1 title + 14 content + 1 close) + 2 backup
 - [ ] Title slide has: project title, 2Kim, Finance & Economics, date
 - [ ] All charts render (no broken images)
 - [ ] Font sizes: title >= 28pt, body >= 18pt
@@ -645,8 +654,8 @@ For every statistical test reported:
 
 | Pitfall | Why It's Dangerous | How to Avoid |
 |---|---|---|
-| **P-hacking across 5 layers** | Running many tests increases the chance of spurious significance. | Apply Bonferroni correction or report all tests transparently (including non-significant ones). |
-| **Pearson correlation on non-stationary series** | Stock prices are non-stationary. Pearson r on price levels is meaningless (spurious correlation). | Compute correlation on **returns** (first differences), not price levels. |
+| **P-hacking across 5 layers** | Running many tests increases the chance of spurious significance. | Apply Benjamini-Hochberg (FDR) correction via `statsmodels.stats.multitest.multipletests(pvalues, method='fdr_bh')`. Report both raw and adjusted p-values. |
+| **Pearson correlation on non-stationary series** | Stock prices are non-stationary. Pearson r on price levels is meaningless (spurious correlation). | Use DTW as primary similarity measure. If computing Pearson/Spearman, apply to **log-returns** (not price levels) aligned by days_from_breakout. |
 | **Overfitting the regime classifier** | Training on ~500 days (CSCO era) with 10+ features risks overfitting, especially with tree models. | Use max_depth=8, min_samples_leaf=10, and validate with TimeSeriesSplit. Report both train and validation accuracy. |
 | **Interpreting DTW distance without context** | A DTW distance of 0.45 means nothing without a baseline. | Compute DTW between NVDA and a random walk as a null baseline. Report NVDA-CSCO distance as a percentile of the null distribution. |
 | **Confusing statistical and practical significance** | A p-value of 0.01 on a Pearson r of 0.08 means the correlation is "significant" but essentially zero in magnitude. | Always report effect sizes alongside p-values. |

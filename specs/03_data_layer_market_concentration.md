@@ -285,14 +285,24 @@ def compute_hhi(weights: pd.Series) -> float:
     """
     Compute HHI from a series of market share percentages.
 
-    HHI ranges:
-        - 10,000 = perfect monopoly (one stock = 100%)
-        - 20 = perfectly equal (500 stocks at 0.2% each -> 500 * 0.04 = 20)
-        - <100 = highly competitive / diversified
-        - >250 = moderately concentrated
-        - >1000 = highly concentrated
+    IMPORTANT -- SCALE CLARIFICATION:
+    This implementation uses weights in PERCENTAGE form (e.g., 7.5 for 7.5%).
+    This produces HHI values on a NON-STANDARD scale (typical range 20-250 for S&P 500).
 
-    For the S&P 500, weights are in percentage (0-100) form.
+    The standard antitrust HHI uses weights as proportions (0 to 1), producing
+    values on the 0-10,000 scale. To convert our values to the standard scale,
+    multiply by 100: our HHI of 200 = standard HHI of 20,000.
+
+    We use the percentage-based scale throughout this analysis for readability.
+    All thresholds below refer to the percentage-based scale:
+        - 20 = perfectly equal (500 stocks at 0.2% each -> 500 * 0.04 = 20)
+        - <100 = well diversified
+        - 100-200 = moderately concentrated
+        - >200 = highly concentrated (current S&P 500, driven by Magnificent 7)
+
+    NOTE: These thresholds are NOT directly comparable to DOJ/FTC antitrust
+    thresholds (which use the 0-10,000 scale where 1500-2500 is "moderately
+    concentrated"). Always specify the scale when citing HHI values.
     """
     # Weights should be in percentage form (e.g., 7.5 for 7.5%)
     return (weights ** 2).sum()
@@ -392,6 +402,19 @@ def compute_buffett_indicator(total_market_cap: pd.Series,
         - GFC trough (Mar 2009): ~57%
         - Pre-COVID (Feb 2020): ~152%
         - Current (Mar 2026): ~195% (estimated)
+
+    CAVEAT: Interest Rate Sensitivity
+        The Buffett Indicator is notoriously flawed as a time-series valuation
+        metric because it does NOT control for interest rates. When rates are
+        near zero (2020-2022), a higher market cap-to-GDP ratio is justified
+        by the lower discount rate. Comparing the indicator across eras with
+        very different rate environments (Fed funds ~6% in 2000 vs ~4.5% in
+        2026 vs ~0% in 2021) without adjustment is misleading.
+
+        Show BOTH the raw Buffett Indicator AND a Fed-adjusted variant:
+        Adjusted_Buffett = Buffett_Indicator * (10Y_Treasury_Yield / median_10Y_yield)
+        where median_10Y_yield is the long-run median (~4.5%).
+        This adjusts for rate environment: lower rates -> higher justified valuations.
     """
     # Resample GDP to daily by forward-filling
     gdp_daily = gdp.resample("D").ffill()
@@ -482,7 +505,22 @@ max_spread = spread["spread"].max()
 current_spread = spread["spread"].iloc[-1]
 ```
 
-### 5.4 Buffett Indicator Analysis
+### 5.4 Passive Investing Adjustment (Microstructure Context)
+
+**IMPORTANT:** Current concentration is partly driven by index fund mechanics, not just speculation. In 1998, passive funds held approximately 10% of U.S. equities. By 2025, it is over 55%. This mechanically increases concentration metrics -- S&P 500 index funds must hold the largest companies in proportion to their weight, creating a self-reinforcing concentration effect. The SPY/RSP spread analysis (Section 5.3) is partly an artifact of passive flows, not just speculative conviction.
+
+**Microstructure Adjustment Table (include in results):**
+
+| Metric | Raw Comparison (AI vs Dot-Com) | Passive Investing Effect | Adjusted Interpretation |
+|--------|-------------------------------|--------------------------|------------------------|
+| Top-10 Concentration | AI era ~37% vs Dot-com ~27% | Passive flows mechanically increase top-weight holdings. Estimated 5-8pp of current concentration is passive-driven. | Adjusted gap narrows to ~2-5pp (still higher, but less dramatic) |
+| SPY/RSP Spread | AI era spread wider than any historical period | Passive inflows disproportionately benefit cap-weighted SPY over equal-weighted RSP | Spread overstates speculative concentration; some fraction is structural |
+| HHI | AI era ~200-250 vs Dot-com ~120-150 | Same passive flow amplification | Qualitative: "more concentrated, but partly due to market structure change" |
+| Volume patterns | Volume z-scores not directly comparable | 1998 volume was ~100% genuine investor activity; 2025 includes substantial HFT/dark pool volume | Volume euphoria analysis should note this confound |
+
+**Framing for presentation:** "Current concentration exceeds dot-com levels by every metric. However, approximately half of this excess may be attributable to the passive investing revolution (55% passive vs 10% in 1998) rather than pure speculation. This does not eliminate the risk -- it means the risk is structural, not just behavioral."
+
+### 5.5 Buffett Indicator Analysis
 
 Compare the Buffett Indicator at key dates:
 
@@ -498,7 +536,7 @@ Compare the Buffett Indicator at key dates:
 | Jan 2023     | Pre-AI rally               | ~150%                     |
 | Mar 2026     | Current                    | ~195% (estimated)         |
 
-### 5.5 HHI Index Over Time
+### 5.6 HHI Index Over Time
 
 ```python
 def hhi_timeseries(constituent_weights: pd.DataFrame) -> pd.Series:
@@ -513,9 +551,53 @@ def hhi_timeseries(constituent_weights: pd.DataFrame) -> pd.Series:
     return pd.Series(results, name="hhi")
 ```
 
-### 5.6 Concentration vs Subsequent Drawdown Correlation
+### 5.7 Concentration-Reversibility Analysis (CENTERPIECE)
 
-**Key analysis:** Does high concentration predict future drawdowns?
+**This is the most actionable analysis in Layer 3.** Instead of just comparing static concentration levels, ask: "When concentration was at level X historically, what was the S&P 500 return over the next 12 months?"
+
+```python
+def concentration_forward_returns(concentration_quarterly: pd.Series,
+                                    sp500_daily: pd.Series) -> pd.DataFrame:
+    """
+    For every quarter from 1996-2024 where top-10 concentration was above X%,
+    compute the S&P 500 total return over the next 12 months.
+    This directly answers: "what happened next when concentration was this high?"
+    """
+    results = []
+    for date, conc in concentration_quarterly.items():
+        future_start = date
+        future_end = date + pd.DateOffset(months=12)
+        future_prices = sp500_daily.loc[future_start:future_end]
+
+        if len(future_prices) < 200:  # Need ~200 trading days
+            continue
+
+        forward_12m_return = (future_prices.iloc[-1] / future_prices.iloc[0] - 1) * 100
+
+        results.append({
+            "date": date,
+            "concentration": conc,
+            "forward_12m_return": forward_12m_return,
+        })
+
+    df = pd.DataFrame(results)
+
+    # Bin by concentration level and report average forward return
+    df["conc_bin"] = pd.cut(df["concentration"], bins=[15, 20, 25, 30, 35, 45])
+    summary = df.groupby("conc_bin")["forward_12m_return"].agg(["mean", "median", "std", "count"])
+    print("Forward 12-Month S&P 500 Return by Concentration Level:")
+    print(summary)
+
+    return df
+```
+
+**Expected findings:** The relationship between concentration and subsequent returns is likely noisy but directionally negative at extreme levels. If quarters with >35% top-10 concentration have below-average forward returns, this is a concrete, actionable finding for the bubble thesis.
+
+**Chart recommendation:** Scatter plot of (concentration level, forward 12-month return) with a fitted regression line and 95% confidence band. Highlight the current concentration level with a vertical line and annotation.
+
+### 5.8 Concentration vs Subsequent Drawdown Correlation
+
+**Complementary analysis:** Does high concentration predict future drawdowns?
 
 ```python
 def concentration_drawdown_correlation(concentration_ts: pd.Series,
@@ -560,6 +642,8 @@ def concentration_drawdown_correlation(concentration_ts: pd.Series,
 ```
 
 **Expected finding:** Higher concentration is weakly correlated with larger subsequent drawdowns, but the relationship is noisy. This is an honest finding -- concentration is a necessary but not sufficient condition for a crash.
+
+**CRITICAL: Look-Ahead Bias Warning:** This analysis uses forward-looking data (future drawdowns) and is valid ONLY for EDA/historical insight. Do NOT feed the outputs of this analysis (e.g., concentration-drawdown correlation coefficients, forward return metrics) into the ML feature matrix. The ML features must use only concentration levels observable on date `d` -- never any quantity computed from prices after date `d`. Verify explicitly that no forward-looking quantities from this section enter the feature engineering pipeline in `06_ml_pipeline.md`.
 
 ---
 
