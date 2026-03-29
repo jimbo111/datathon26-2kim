@@ -1,0 +1,4 @@
+layer,test_name,raw_p,bh_adjusted_p,significant_raw,significant_bh,lost_significance
+L1-Price,pearson_log_returns,0.001,0.003,True,True,False
+L1-Price,spearman_log_returns,0.04,0.060000000000000005,True,False,True
+ML-DTW,dtw_permutation_dotcom,1.0,1.0,False,False,False
