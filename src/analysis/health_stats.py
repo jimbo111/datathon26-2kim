@@ -109,14 +109,15 @@ def run_phase2(master: pd.DataFrame) -> dict:
                 )
 
         # T-test: mean diabetes rate in food deserts vs not
-        t_stat, t_p = stats.ttest_ind(desert, non_desert, equal_var=False)
-        results["ttest_diabetes"] = {
-            "t_statistic": round(t_stat, 3),
-            "p_value": float(f"{t_p:.2e}"),
-            "desert_mean": round(desert.mean(), 2),
-            "non_desert_mean": round(non_desert.mean(), 2),
-            "difference": round(desert.mean() - non_desert.mean(), 2),
-        }
+        if len(desert) > 1 and len(non_desert) > 1:
+            t_stat, t_p = stats.ttest_ind(desert, non_desert, equal_var=False)
+            results["ttest_diabetes"] = {
+                "t_statistic": round(t_stat, 3),
+                "p_value": float(f"{t_p:.2e}"),
+                "desert_mean": round(desert.mean(), 2),
+                "non_desert_mean": round(non_desert.mean(), 2),
+                "difference": round(desert.mean() - non_desert.mean(), 2),
+            }
 
     # ── 2d. Partial correlation: food access → diabetes controlling for income ──
     partial_cols = ["diabetes_pct", "is_food_desert", "poverty_rate"]
@@ -142,19 +143,17 @@ def run_phase3(master: pd.DataFrame) -> dict:
     results = {}
 
     # ── 3a. Variance decomposition: between-county vs within-county diabetes variance ──
-    if "diabetes_pct" in master.columns and "county_fips" not in master.columns:
-        master = master.copy()
-        master["county_fips"] = master["tract_fips"].str[:5]
-
-    vc_cols = ["diabetes_pct", "county_fips"]
     dfv = master.dropna(subset=["diabetes_pct"]).copy()
-    if "county_fips" not in dfv.columns:
-        dfv["county_fips"] = dfv["tract_fips"].str[:5]
+    dfv["county_fips"] = dfv["tract_fips"].str[:5]
 
     if len(dfv) > 100:
+        grand_mean = dfv["diabetes_pct"].mean()
         total_var = dfv["diabetes_pct"].var()
-        county_means = dfv.groupby("county_fips")["diabetes_pct"].mean()
-        between_var = county_means.var()
+
+        # Weighted between-county variance (accounts for unequal group sizes)
+        county_stats = dfv.groupby("county_fips")["diabetes_pct"].agg(["mean", "count"])
+        between_var = ((county_stats["count"] * (county_stats["mean"] - grand_mean) ** 2).sum()
+                       / county_stats["count"].sum())
         within_var = total_var - between_var
 
         results["variance_decomposition"] = {
