@@ -23,13 +23,13 @@ def build_health_disadvantage_index(
 ) -> dict:
     """Compute the Health Disadvantage Index (HDI) for every census tract.
 
-    The index is a weighted composite of:
+    The index is a descriptive composite of:
     - Food access (is_food_desert, pct_low_access_1mi)
     - Income (poverty_rate)
     - Healthcare access (uninsured_pct, hpsa_shortage)
 
-    Weights are justified from Phase 2-4 regression coefficients when available,
-    otherwise use equal weighting of standardized components.
+    Equal weights are used to avoid circularity (deriving weights from the same
+    data used to validate the index would guarantee correlation with outcomes).
     """
     console.rule("[bold]Phase 5B: Health Disadvantage Index")
     results = {}
@@ -45,9 +45,10 @@ def build_health_disadvantage_index(
     if "hpsa_shortage" in master.columns and master["hpsa_shortage"].notna().sum() > 100:
         components["healthcare_access"].append("hpsa_shortage")
 
-    # ── Determine weights from regression coefficients ──
-    weights = _derive_weights(master, phase2_results)
+    # Equal weights to avoid circularity (see docstring)
+    weights = {k: 1.0 / len(components) for k in components}
     results["index_weights"] = weights
+    results["weight_justification"] = "Equal weights used to avoid circularity with outcome variables"
 
     # ── Compute standardized components ──
     df = master.copy()
@@ -149,61 +150,20 @@ def build_health_disadvantage_index(
     return results
 
 
-def _derive_weights(df: pd.DataFrame, phase2_results: dict | None) -> dict:
-    """Derive component weights from regression coefficients or use defaults."""
-    # Try to extract from Phase 2 OLS results
-    if phase2_results and "ols_diabetes" in phase2_results:
-        coefs = phase2_results["ols_diabetes"].get("coefficients", {})
-        food_coef = abs(coefs.get("is_food_desert", {}).get("coef", 0))
-        income_coef = abs(coefs.get("poverty_rate", {}).get("coef", 0))
-        insurance_coef = abs(coefs.get("uninsured_pct", {}).get("coef", 0))
-
-        total = food_coef + income_coef + insurance_coef
-        if total > 0:
-            weights = {
-                "food_access": round(food_coef / total, 3),
-                "income": round(income_coef / total, 3),
-                "healthcare_access": round(insurance_coef / total, 3),
-            }
-            console.print(f"  Weights from regression: {weights}")
-            return weights
-
-    # Fallback: derive weights from a fresh regression on available data
-    reg_cols = ["diabetes_pct", "is_food_desert", "poverty_rate", "uninsured_pct"]
-    available = [c for c in reg_cols if c in df.columns]
-    if len(available) == len(reg_cols):
-        clean = df[reg_cols].dropna()
-        if len(clean) > 100:
-            model = smf.ols(
-                "diabetes_pct ~ is_food_desert + poverty_rate + uninsured_pct",
-                data=clean,
-            ).fit()
-            food_coef = abs(model.params.get("is_food_desert", 0))
-            income_coef = abs(model.params.get("poverty_rate", 0))
-            ins_coef = abs(model.params.get("uninsured_pct", 0))
-            total = food_coef + income_coef + ins_coef
-            if total > 0:
-                weights = {
-                    "food_access": round(food_coef / total, 3),
-                    "income": round(income_coef / total, 3),
-                    "healthcare_access": round(ins_coef / total, 3),
-                }
-                console.print(f"  Weights from fresh regression: {weights}")
-                return weights
-
-    # Default: equal weights
-    console.print("  Using equal weights (no regression data available)")
-    return {"food_access": 0.333, "income": 0.333, "healthcare_access": 0.334}
-
-
 def _compute_path_coefficients(df: pd.DataFrame) -> dict:
-    """Estimate path diagram coefficients: poverty → food desert → obesity → diabetes.
+    """Bivariate associations along a hypothesized pathway.
 
-    Uses sequential OLS to estimate each path:
-    1. poverty → food_desert
-    2. food_desert → obesity
-    3. obesity → diabetes
-    4. Direct: poverty → diabetes (for comparison with mediated path)
+    NOTE: These are independent bivariate regressions, NOT a formal mediation
+    analysis. Coefficients represent total bivariate associations and cannot be
+    multiplied to estimate indirect effects (that would double-count shared variance).
+    A formal mediation analysis would require controlling for upstream variables
+    at each stage (e.g., Baron & Kenny or bootstrap-based mediation).
+
+    Associations estimated:
+    1. poverty ↔ food_desert
+    2. food_desert ↔ obesity
+    3. obesity ↔ diabetes
+    4. poverty ↔ diabetes (total association)
     """
     paths = {}
 

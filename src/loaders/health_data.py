@@ -248,10 +248,16 @@ def load_acs(api_key: Optional[str] = None) -> pd.DataFrame:
             raw[col] = pd.to_numeric(raw[col], errors="coerce")
 
     df = pd.DataFrame({FIPS_COL: raw[FIPS_COL]})
-    df["median_household_income"] = raw["median_household_income"]
 
-    pop = raw["_total_pop"]
-    pov = raw["_poverty_universe"]
+    # Census API uses negative sentinel values for suppressed/missing data
+    income = raw["median_household_income"].copy()
+    income = income.where(income > 0, np.nan)
+    df["median_household_income"] = income
+
+    pop = raw["_total_pop"].copy()
+    pop = pop.where(pop >= 0, np.nan)
+    pov = raw["_poverty_universe"].copy()
+    pov = pov.where(pov >= 0, np.nan)
 
     df["poverty_rate"] = np.where(pov > 0, raw["_below_poverty"] / pov * 100, np.nan)
     df["pct_white"] = np.where(pop > 0, raw["_pop_white"] / pop * 100, np.nan)

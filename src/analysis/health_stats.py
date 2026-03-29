@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 from scipy import stats
 from rich.console import Console
 
@@ -58,6 +59,20 @@ def run_phase2(master: pd.DataFrame) -> dict:
         ).fit(cov_type="HC1")
         results["ols_diabetes"] = _ols_summary(model_diabetes, "diabetes_pct")
         console.print(f"  OLS diabetes: R²={model_diabetes.rsquared:.3f}, n={model_diabetes.nobs:.0f}")
+
+        # VIF check for multicollinearity
+        X_vif = df2[["is_food_desert", "poverty_rate", "uninsured_pct"]].dropna()
+        X_vif = sm.add_constant(X_vif)
+        vif_data = {}
+        for i, col in enumerate(X_vif.columns[1:]):
+            vif_val = variance_inflation_factor(X_vif.values, i + 1)
+            vif_data[col] = round(vif_val, 2)
+        results["vif"] = vif_data
+        high_vif = {k: v for k, v in vif_data.items() if v > 5}
+        if high_vif:
+            console.print(f"  [yellow]VIF warning (>5): {high_vif}[/]")
+        else:
+            console.print(f"  VIF: {vif_data} (all <5, no multicollinearity concern)")
     else:
         console.print("[yellow]  Not enough data for diabetes OLS[/]")
 
@@ -148,12 +163,13 @@ def run_phase3(master: pd.DataFrame) -> dict:
 
     if len(dfv) > 100:
         grand_mean = dfv["diabetes_pct"].mean()
-        total_var = dfv["diabetes_pct"].var()
+        n_total = len(dfv)
+        total_var = dfv["diabetes_pct"].var(ddof=0)  # population variance for consistent decomposition
 
         # Weighted between-county variance (accounts for unequal group sizes)
         county_stats = dfv.groupby("county_fips")["diabetes_pct"].agg(["mean", "count"])
         between_var = ((county_stats["count"] * (county_stats["mean"] - grand_mean) ** 2).sum()
-                       / county_stats["count"].sum())
+                       / n_total)
         within_var = total_var - between_var
 
         results["variance_decomposition"] = {
@@ -246,18 +262,18 @@ def run_phase4(master: pd.DataFrame) -> dict:
         console.print("  Income × Race → Diabetes matrix:")
         console.print(str(matrix))
 
-    # ── 4b. Regression with interaction: income × race → diabetes ──
+    # ── 4b. Regression with interaction: income × race (continuous) → diabetes ──
     int_cols = ["diabetes_pct", "pct_black", "median_household_income", "is_food_desert"]
     dfi = _clean_for_regression(master, int_cols)
 
     if len(dfi) > 100:
-        # Create high_pct_black binary for interaction
         dfi = dfi.copy()
-        dfi["high_pct_black"] = (dfi["pct_black"] > dfi["pct_black"].median()).astype(int)
         dfi["income_10k"] = dfi["median_household_income"] / 10_000
+        # Use continuous pct_black (not median-split) to preserve information
+        dfi["pct_black_std"] = (dfi["pct_black"] - dfi["pct_black"].mean()) / dfi["pct_black"].std()
 
         model_int = smf.ols(
-            "diabetes_pct ~ income_10k * high_pct_black + is_food_desert",
+            "diabetes_pct ~ income_10k * pct_black_std + is_food_desert",
             data=dfi,
         ).fit(cov_type="HC1")
 
@@ -265,17 +281,18 @@ def run_phase4(master: pd.DataFrame) -> dict:
         console.print(f"  Interaction R²={model_int.rsquared:.3f}")
 
         # Extract interaction term significance
-        if "income_10k:high_pct_black" in model_int.params:
-            int_coef = model_int.params["income_10k:high_pct_black"]
-            int_p = model_int.pvalues["income_10k:high_pct_black"]
+        int_term = "income_10k:pct_black_std"
+        if int_term in model_int.params:
+            int_coef = model_int.params[int_term]
+            int_p = model_int.pvalues[int_term]
             results["interaction_term"] = {
                 "coefficient": round(int_coef, 4),
                 "p_value": float(f"{int_p:.2e}"),
                 "significant": int_p < 0.05,
                 "interpretation": (
-                    "Income reduction in diabetes is weaker for high-% Black tracts"
+                    "Income's protective effect on diabetes is weaker in higher-% Black tracts"
                     if int_coef > 0 else
-                    "Income reduction in diabetes is stronger for high-% Black tracts"
+                    "Income's protective effect on diabetes is stronger in higher-% Black tracts"
                 ),
             }
             console.print(f"  Interaction coef={int_coef:.4f}, p={int_p:.2e}")
