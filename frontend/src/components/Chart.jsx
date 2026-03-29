@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
-import Plot from "react-plotly.js";
+import PlotModule from "react-plotly.js";
+
+// Handle CJS default export compatibility
+const Plot = PlotModule.default || PlotModule;
 
 /**
  * Reusable chart component — takes a fetch function that returns Plotly JSON.

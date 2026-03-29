@@ -157,3 +157,91 @@ code {
   border-radius: 4px;
   font-size: 0.85em;
 }
+
+/* App navigation */
+.app-nav {
+  display: flex;
+  gap: 0;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  padding: 0 24px;
+}
+
+.nav-btn {
+  background: none;
+  color: #8b949e;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 20px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.nav-btn:hover {
+  color: #c9d1d9;
+}
+
+.nav-btn.active {
+  color: #f0f6fc;
+  border-bottom-color: #1f6feb;
+}
+
+/* Subtitle */
+.subtitle {
+  color: #8b949e;
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+/* Panel descriptions */
+.panel-desc {
+  color: #8b949e;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* Tab navigation */
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  color: #8b949e;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover {
+  color: #c9d1d9;
+  background: #21262d;
+}
+
+.tab-btn.active {
+  background: #1f6feb;
+  color: #fff;
+}
+
+/* Two-column chart grid */
+.chart-grid.two-col {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* Bad cell highlight */
+.cell-bad {
+  color: #f85149;
+  font-weight: 600;
+}

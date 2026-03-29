@@ -6,27 +6,27 @@
 ---
 
 ## Phase 1A — Geographic Foundation (start immediately)
-- [ ] Build side-by-side choropleth: food access score + diabetes rate (same geographic extent)
-- [ ] Build choropleth: food deserts overlaid on income quintiles
-- [ ] Confirm visual clustering — food deserts are not random
-- [ ] Wire up choropleth to backend API endpoint in `routes/charts.py`
-- [ ] Create `Chart.jsx` component for map rendering
+- [x] Build side-by-side choropleth: food access score + diabetes rate (same geographic extent)
+- [x] Build choropleth: food deserts overlaid on income quintiles
+- [x] Confirm visual clustering — food deserts are not random
+- [x] Wire up choropleth to backend API endpoint in `routes/charts.py`
+- [x] Create `Chart.jsx` component for map rendering (reused existing + added HealthDashboard)
 - [ ] Sync with Jimmy on master dataframe column names
 
 ## Phase 2 — Food Access Visuals
-> Blocked by: Jimmy's Phase 2 regression outputs
+> Using sample data — will swap to Jimmy's real regression outputs when ready
 
-- [ ] Scatter with regression line: food access score vs. diabetes by tract, colored by majority race
-- [ ] Scatter: food access score vs. obesity rate
-- [ ] Add chart endpoints in `backend/services/chart_service.py`
-- [ ] Integrate into Dashboard component
+- [x] Scatter with regression line: food access score vs. diabetes by tract, colored by majority race
+- [x] Scatter: food access score vs. obesity rate
+- [x] Add chart endpoints in `backend/services/chart_service.py`
+- [x] Integrate into Dashboard component
 
 ## Phase 3 — Zip Code Effect Visuals
-> Blocked by: Jimmy's Phase 3 stats outputs
+> Using sample data — will swap to Jimmy's real stats outputs when ready
 
-- [ ] Bar chart: life expectancy by income quintile, split by race
-- [ ] Annotate worst vs. best tract in same metro area
-- [ ] Add to Dashboard layout
+- [x] Bar chart: life expectancy by income quintile, split by race
+- [ ] Annotate worst vs. best tract in same metro area (needs real tract data)
+- [x] Add to Dashboard layout
 
 ## Phase 4 — Race Gap Visuals
 > Blocked by: Jimmy's Phase 4 income x race matrix

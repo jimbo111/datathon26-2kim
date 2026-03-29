@@ -27,4 +27,22 @@ export const getScatter = (x, y, hue = null) =>
 export const getTimeSeries = (dateCol, valueCol, freq = null) =>
   api.get("/charts/timeseries", { params: { date_col: dateCol, value_col: valueCol, freq } }).then((r) => r.data);
 
+// --- Health Analysis Maps ---
+export const getChoroplethFoodAccess = () =>
+  api.get("/charts/health/choropleth/food-access").then((r) => r.data);
+export const getChoroplethDiabetes = () =>
+  api.get("/charts/health/choropleth/diabetes").then((r) => r.data);
+export const getChoroplethObesity = () =>
+  api.get("/charts/health/choropleth/obesity").then((r) => r.data);
+export const getChoroplethLifeExpectancy = () =>
+  api.get("/charts/health/choropleth/life-expectancy").then((r) => r.data);
+export const getScatterFoodVsDiabetes = () =>
+  api.get("/charts/health/scatter/food-vs-diabetes").then((r) => r.data);
+export const getScatterFoodVsObesity = () =>
+  api.get("/charts/health/scatter/food-vs-obesity").then((r) => r.data);
+export const getBarLifeExpectancyIncome = () =>
+  api.get("/charts/health/bar/life-expectancy-income").then((r) => r.data);
+export const getHealthSummary = () =>
+  api.get("/charts/health/summary").then((r) => r.data);
+
 export default api;
