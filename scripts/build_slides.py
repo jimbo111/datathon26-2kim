@@ -104,28 +104,55 @@ CHART_FILE_MAP = {
 }
 
 
-def chart_placeholder(slide, left, top, width, height, label="[Chart Placeholder]"):
-    """Insert chart image if available, otherwise show placeholder box."""
-    # Try to find a matching chart PNG
+def _fit_image(slide, img_path, left, top, max_width, max_height):
+    """Insert image preserving aspect ratio, centered within the bounding box."""
+    from PIL import Image as PILImage
+    img = PILImage.open(img_path)
+    img_w, img_h = img.size
+    img_aspect = img_w / img_h
+    box_aspect = max_width / max_height
+
+    if img_aspect > box_aspect:
+        # Image is wider than box — fit to width
+        final_w = max_width
+        final_h = Inches(max_width.inches / img_aspect)
+    else:
+        # Image is taller than box — fit to height
+        final_h = max_height
+        final_w = Inches(max_height.inches * img_aspect)
+
+    # Center within the bounding box
+    offset_left = Inches(left.inches + (max_width.inches - final_w.inches) / 2)
+    offset_top = Inches(top.inches + (max_height.inches - final_h.inches) / 2)
+
+    slide.shapes.add_picture(str(img_path), offset_left, offset_top, final_w, final_h)
+
+
+def _find_chart_file(label):
+    """Find chart PNG matching a placeholder label."""
+    import re
     for chart_id, filename in CHART_FILE_MAP.items():
         if f"Chart {chart_id}" in label or f"chart_{chart_id.replace('.', '_')}" in label.lower():
             img_path = CHART_DIR / filename
             if img_path.exists():
-                slide.shapes.add_picture(str(img_path), left, top, width, height)
-                return
-            break
+                return img_path
+            return None
 
-    # Also try direct filename matching from the label
-    for filename in CHART_DIR.glob("*.png") if CHART_DIR.exists() else []:
-        fname_lower = filename.stem.lower()
-        # Extract chart ID from label like "[Chart 1.1 — ...]"
-        import re
-        match = re.search(r'chart[_ ](\d+[._]\d+)', label.lower().replace(' ', '_'))
-        if match:
-            chart_num = match.group(1).replace('.', '_')
-            if chart_num in fname_lower:
-                slide.shapes.add_picture(str(filename), left, top, width, height)
-                return
+    match = re.search(r'chart[_ ](\d+[._]\d+|ml[._]\d+)', label.lower().replace(' ', '_'))
+    if match:
+        chart_num = match.group(1).replace('.', '_')
+        for filename in (CHART_DIR.glob("*.png") if CHART_DIR.exists() else []):
+            if chart_num in filename.stem.lower():
+                return filename
+    return None
+
+
+def chart_placeholder(slide, left, top, width, height, label="[Chart Placeholder]"):
+    """Insert chart image (aspect-ratio preserved) if available, otherwise placeholder box."""
+    img_path = _find_chart_file(label)
+    if img_path:
+        _fit_image(slide, img_path, left, top, width, height)
+        return
 
     # Fallback: gray placeholder box
     shape = add_shape_box(slide, left, top, width, height,
