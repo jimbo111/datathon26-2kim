@@ -179,11 +179,20 @@ def _fetch_fred_series() -> pd.DataFrame:
         raise EnvironmentError("FRED_API_KEY environment variable not set")
     fred = Fred(api_key=api_key)
 
-    wilshire = fred.get_series(
-        "WILL5000IND",
-        observation_start="1997-01-01",
-        observation_end=END_DATE,
-    )
+    # NCBCEL = Nonfinancial Corporate Equities (quarterly, trillions)
+    # Wilshire 5000 series discontinued on FRED — NCBCEL is the best proxy
+    try:
+        wilshire = fred.get_series(
+            "NCBCEL",
+            observation_start="1997-01-01",
+            observation_end=END_DATE,
+        )
+    except ValueError:
+        wilshire = fred.get_series(
+            "SP500",
+            observation_start="1997-01-01",
+            observation_end=END_DATE,
+        )
     gdp = fred.get_series(
         "GDP",
         observation_start="1997-01-01",

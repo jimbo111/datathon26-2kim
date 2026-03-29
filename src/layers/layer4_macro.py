@@ -157,7 +157,7 @@ def _compute_gdp_yoy_growth(gdp_raw: pd.DataFrame) -> pd.Series:
     s = gdp_raw[col].dropna().sort_index()
     yoy_q = s.pct_change(periods=4) * 100
     # Forward-fill quarterly YoY to monthly end-of-month
-    yoy_monthly = yoy_q.resample("M").ffill()
+    yoy_monthly = yoy_q.resample("ME").ffill()
     yoy_monthly.name = "gdp_yoy_growth"
     return yoy_monthly
 
@@ -177,11 +177,11 @@ def _align_series_to_monthly(df: pd.DataFrame, series_id: str) -> pd.Series:
     s = df[series_id].sort_index()
 
     if series_id in DAILY_SERIES:
-        return s.resample("M").mean()
+        return s.resample("ME").mean()
     if series_id in QUARTERLY_SERIES:
-        return s.resample("M").ffill()
+        return s.resample("ME").ffill()
     # Monthly: take last observation in the month (already monthly, but harmonise index)
-    return s.resample("M").last()
+    return s.resample("ME").last()
 
 
 # ---------------------------------------------------------------------------

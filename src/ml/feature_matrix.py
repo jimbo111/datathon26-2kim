@@ -125,7 +125,7 @@ def _build_price_features(layer1: dict) -> pd.DataFrame:
     features["return_skewness"] = daily_ret.rolling(63).skew()
 
     # ---- Resample to month-end ----
-    monthly = features.resample("M").last()
+    monthly = features.resample("ME").last()
 
     return monthly
 
@@ -189,7 +189,7 @@ def _build_fundamental_features(layer2: dict) -> pd.DataFrame:
         return pd.DataFrame()
 
     fund_df = pd.DataFrame(frames)
-    fund_df = fund_df.resample("M").last()
+    fund_df = fund_df.resample("ME").last()
 
     # Rename to canonical names
     rename_map = {
@@ -267,7 +267,7 @@ def _build_concentration_features(layer3: dict) -> pd.DataFrame:
 
     conc_df = pd.DataFrame(frames)
     # Resample all to monthly
-    conc_df = conc_df.resample("M").last()
+    conc_df = conc_df.resample("ME").last()
 
     return conc_df
 
@@ -325,7 +325,7 @@ def _build_macro_features(layer4: dict) -> pd.DataFrame:
         return pd.DataFrame()
 
     macro_df = pd.DataFrame(frames)
-    macro_df = macro_df.resample("M").last()
+    macro_df = macro_df.resample("ME").last()
 
     # Forward-fill macro releases (typically monthly with publication lag)
     for col in ["fed_funds", "m2_growth", "credit_spread", "unemployment", "gdp_growth"]:
@@ -398,7 +398,7 @@ def _build_sentiment_features(layer5: dict) -> pd.DataFrame:
 
     sent_df = pd.DataFrame(frames)
     sent_df.index = pd.to_datetime(sent_df.index)
-    sent_df = sent_df.resample("M").mean()  # mean for intra-month multiple filings
+    sent_df = sent_df.resample("ME").mean()  # mean for intra-month multiple filings
 
     return sent_df
 
