@@ -282,80 +282,56 @@ def load_acs(api_key: Optional[str] = None) -> pd.DataFrame:
 
 # ─── CDC Life Expectancy (USALEEP) ───────────────────────────────────────────
 
-LIFE_EXP_API = "https://data.cdc.gov/resource/5h56-n989.csv"
+LIFE_EXP_FTP = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NVSS/USALEEP/CSV/US_B.CSV"
 LIFE_EXP_CACHE = DATA_RAW / "life_expectancy_tract.parquet"
 
 
 def download_life_expectancy() -> pd.DataFrame:
-    """Download CDC Life Expectancy at Birth by census tract."""
+    """Download CDC Life Expectancy at Birth by census tract (from CDC FTP)."""
     if LIFE_EXP_CACHE.exists():
         console.print("[yellow]Life expectancy: loading from cache.[/]")
         return pd.read_parquet(LIFE_EXP_CACHE)
 
-    console.print("[cyan]Downloading CDC Life Expectancy (USALEEP)...[/]")
-    frames = []
-    offset = 0
-    limit = 50_000
+    console.print("[cyan]Downloading CDC Life Expectancy (USALEEP, ~25 MB)...[/]")
+    resp = _SESSION.get(LIFE_EXP_FTP, timeout=180)
+    resp.raise_for_status()
 
-    while True:
-        params = {"$limit": limit, "$offset": offset}
-        resp = _SESSION.get(LIFE_EXP_API, params=params, timeout=120)
-        resp.raise_for_status()
-        batch = pd.read_csv(io.StringIO(resp.text))
-        if batch.empty:
-            break
-        frames.append(batch)
-        console.print(f"  fetched {offset + len(batch):,} rows...")
-        if len(batch) < limit:
-            break
-        offset += limit
-
-    if not frames:
-        raise RuntimeError("CDC Life Expectancy download returned no data. Check network connection.")
-    df = pd.concat(frames, ignore_index=True)
+    df = pd.read_csv(io.StringIO(resp.content.decode("latin-1")))
     LIFE_EXP_CACHE.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(LIFE_EXP_CACHE, index=False)
-    console.print(f"[green]Life expectancy: {df.shape[0]:,} tracts cached.[/]")
+    console.print(f"[green]Life expectancy: {df.shape[0]:,} rows cached.[/]")
     return df
 
 
 def load_life_expectancy() -> pd.DataFrame:
-    """Load and clean life expectancy data."""
+    """Load and clean life expectancy data — extract e(0) for each tract.
+
+    The CDC FTP life table has columns: Tract ID, STATE2KX, CNTY2KX, TRACT2KX,
+    Age Group, nq(x), l(x), nd(x), nL(x), T(x), e(x), se(nq(x)), se(e(x)).
+    We filter for 'Under 1' age group to get life expectancy at birth e(0).
+    """
     raw = download_life_expectancy()
 
-    # Discover FIPS column (varies across Socrata versions)
-    fips_candidates = [
-        "census_tract_number", "tract_id", "full_ct_num",
-        "Census Tract Number", "census tract number",
-    ]
-    fips_src = next((c for c in fips_candidates if c in raw.columns), None)
-    if fips_src is None:
-        for c in raw.columns:
-            if "tract" in c.lower() or "fips" in c.lower() or "ct" in c.lower():
-                fips_src = c
-                break
-    if fips_src is None:
-        fips_src = raw.columns[0]
+    # FTP format: "Tract ID" is the 11-digit FIPS, "e(x)" is life expectancy,
+    # "Age Group" contains "Under 1" for birth life expectancy
+    fips_col_name = next((c for c in raw.columns if "tract" in c.lower() and "id" in c.lower()), raw.columns[0])
+    le_col_name = next((c for c in raw.columns if c.strip() == "e(x)"), None)
+    se_col_name = next((c for c in raw.columns if c.strip() == "se(e(x))"), None)
+    age_col_name = next((c for c in raw.columns if "age" in c.lower()), None)
 
-    # Discover life expectancy column
-    le_candidates = ["e_0_", "le", "e(0)", "life_expectancy", "Life Expectancy"]
-    le_src = next((c for c in le_candidates if c in raw.columns), None)
-    if le_src is None:
-        for c in raw.columns:
-            if "life" in c.lower() or "expectan" in c.lower() or c == "e_0_":
-                le_src = c
-                break
-
-    se_candidates = ["se_e_0_", "se_le", "se(e(0))", "se"]
-    se_src = next((c for c in se_candidates if c in raw.columns), None)
+    # Filter for life expectancy at birth (Under 1 age group)
+    if age_col_name:
+        birth = raw[raw[age_col_name].str.strip().str.lower() == "under 1"].copy()
+    else:
+        birth = raw.copy()
 
     df = pd.DataFrame()
-    df[FIPS_COL] = raw[fips_src].astype(str).str.replace(".", "", regex=False).str.zfill(11)
+    df[FIPS_COL] = birth[fips_col_name].astype(str).str.strip().str.zfill(11)
 
-    if le_src:
-        df["life_expectancy"] = pd.to_numeric(raw[le_src], errors="coerce")
-    if se_src:
-        df["life_expectancy_se"] = pd.to_numeric(raw[se_src], errors="coerce")
+    if le_col_name:
+        df["life_expectancy"] = pd.to_numeric(birth[le_col_name], errors="coerce")
+    if se_col_name:
+        df["life_expectancy_se"] = pd.to_numeric(birth[se_col_name], errors="coerce")
 
     df = df.dropna(subset=["life_expectancy"])
     df = df.drop_duplicates(subset=[FIPS_COL])
