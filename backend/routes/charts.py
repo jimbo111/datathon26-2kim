@@ -19,6 +19,14 @@ async def list_charts():
             {"name": "bar", "params": ["column", "top_n"]},
             {"name": "scatter", "params": ["x", "y", "hue"]},
             {"name": "timeseries", "params": ["date_col", "value_col", "freq"]},
+            {"name": "health/choropleth/food-access", "params": []},
+            {"name": "health/choropleth/diabetes", "params": []},
+            {"name": "health/choropleth/obesity", "params": []},
+            {"name": "health/choropleth/life-expectancy", "params": []},
+            {"name": "health/scatter/food-vs-diabetes", "params": []},
+            {"name": "health/scatter/food-vs-obesity", "params": []},
+            {"name": "health/bar/life-expectancy-income", "params": []},
+            {"name": "health/summary", "params": []},
         ]
     }
 
@@ -51,3 +59,45 @@ async def scatter(x: str, y: str, hue: str | None = None):
 async def timeseries(date_col: str, value_col: str, freq: str | None = None):
     fig_json = charts.time_series(date_col, value_col, freq=freq)
     return JSONResponse(content=fig_json)
+
+
+# --- Health Analysis Map Endpoints ---
+
+@router.get("/health/choropleth/food-access")
+async def choropleth_food_access():
+    return JSONResponse(content=charts.choropleth_food_access())
+
+
+@router.get("/health/choropleth/diabetes")
+async def choropleth_diabetes():
+    return JSONResponse(content=charts.choropleth_diabetes())
+
+
+@router.get("/health/choropleth/obesity")
+async def choropleth_obesity():
+    return JSONResponse(content=charts.choropleth_obesity())
+
+
+@router.get("/health/choropleth/life-expectancy")
+async def choropleth_life_expectancy():
+    return JSONResponse(content=charts.choropleth_life_expectancy())
+
+
+@router.get("/health/scatter/food-vs-diabetes")
+async def scatter_food_vs_diabetes():
+    return JSONResponse(content=charts.scatter_food_vs_diabetes())
+
+
+@router.get("/health/scatter/food-vs-obesity")
+async def scatter_food_vs_obesity():
+    return JSONResponse(content=charts.scatter_food_vs_obesity())
+
+
+@router.get("/health/bar/life-expectancy-income")
+async def bar_life_expectancy_income():
+    return JSONResponse(content=charts.bar_life_expectancy_by_income())
+
+
+@router.get("/health/summary")
+async def health_summary():
+    return JSONResponse(content=charts.health_summary_table())
