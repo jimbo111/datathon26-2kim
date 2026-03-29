@@ -77,13 +77,12 @@ def build_master(
     race_cols = {"pct_white": "White", "pct_black": "Black", "pct_hispanic": "Hispanic"}
     avail = {k: v for k, v in race_cols.items() if k in master.columns}
     if avail:
-        race_df = master[list(avail.keys())]
-        has_data = race_df.notna().any(axis=1)
+        race_df = master[list(avail.keys())].fillna(0)
         max_pct = race_df.max(axis=1)
-        top_race = race_df.where(has_data).idxmax(axis=1).map(avail)
-        # Only label as majority if the top group is at least 40% of the tract
+        top_race = race_df.idxmax(axis=1).map(avail)
+        has_any = master[list(avail.keys())].notna().any(axis=1)
         master["majority_race"] = np.where(
-            ~has_data, "Unknown",
+            ~has_any, "Unknown",
             np.where(max_pct >= 40, top_race, "Other")
         )
 
