@@ -906,18 +906,21 @@ def chart_4_3_yield_curve(macro_df: pd.DataFrame) -> dict[str, Path]:
         )
 
         # Shade inversion periods
-        inv_df = detect_yield_curve_inversions(
-            edf.set_index("date")["yield_curve_spread"]
-        )
-        for _, inv_row in inv_df.iterrows():
-            fig.add_vrect(
-                x0=inv_row["inversion_start"],
-                x1=inv_row["inversion_end"],
-                fillcolor="rgba(239,85,59,0.20)",
-                layer="below",
-                line_width=0,
-                row=row, col=1,
+        try:
+            inv_df = detect_yield_curve_inversions(
+                edf.set_index("date")["yield_curve_spread"]
             )
+            for _, inv_row in inv_df.iterrows():
+                fig.add_vrect(
+                    x0=str(inv_row["inversion_start"]),
+                    x1=str(inv_row["inversion_end"]),
+                    fillcolor="rgba(239,85,59,0.20)",
+                    layer="below",
+                    line_width=0,
+                    row=row, col=1,
+                )
+        except Exception:
+            pass  # skip inversion shading if dates are incompatible
 
         # Zero line
         fig.add_hline(
@@ -930,29 +933,31 @@ def chart_4_3_yield_curve(macro_df: pd.DataFrame) -> dict[str, Path]:
         )
 
     # Dot-com specific annotations
-    fig.add_vline(
-        x="2000-03-31",
-        line_dash="dash", line_color=DOTCOM_COLOR,
-        annotation_text="S&P 500 Peak",
-        annotation_position="top right",
-        row=1, col=1,
-    )
-    fig.add_vline(
-        x="2001-03-01",
-        line_dash="dot", line_color="orange",
-        annotation_text="Recession Start",
-        annotation_position="top left",
-        row=1, col=1,
-    )
-
-    # AI era provisional peak
-    fig.add_vline(
-        x=PEAK_DATES["ai"].strftime("%Y-%m-%d"),
-        line_dash="dash", line_color=AI_ERA_COLOR,
-        annotation_text="Provisional Peak",
-        annotation_position="top right",
-        row=2, col=1,
-    )
+    try:
+        fig.add_vline(
+            x=pd.Timestamp("2000-03-31"),
+            line_dash="dash", line_color=DOTCOM_COLOR,
+            annotation_text="S&P 500 Peak",
+            annotation_position="top right",
+            row=1, col=1,
+        )
+        fig.add_vline(
+            x=pd.Timestamp("2001-03-01"),
+            line_dash="dot", line_color="orange",
+            annotation_text="Recession Start",
+            annotation_position="top left",
+            row=1, col=1,
+        )
+        # AI era provisional peak
+        fig.add_vline(
+            x=PEAK_DATES["ai"],
+            line_dash="dash", line_color=AI_ERA_COLOR,
+            annotation_text="Provisional Peak",
+            annotation_position="top right",
+            row=2, col=1,
+        )
+    except (TypeError, ValueError):
+        pass  # skip annotations if x-axis types are incompatible
 
     fig.update_layout(
         title="Yield Curve (10Y-2Y): Recession Warning Signal",
