@@ -80,8 +80,54 @@ def add_bullet_list(slide, left, top, width, height, items, *,
     return txBox
 
 
+CHART_DIR = OUT_DIR / "charts"
+
+# Map placeholder labels to chart file names
+CHART_FILE_MAP = {
+    "1.1": "chart_1_1.png",
+    "1.2": "chart_1_2.png",
+    "1.3": "chart_1_3.png",
+    "1.4": "chart_1_4.png",
+    "2.1": "chart_2_1_pe_trajectory.png",
+    "2.2": "chart_2_2_revenue_growth.png",
+    "3.1": "chart_3_1_concentration_timeline.png",
+    "3.2": "chart_3_2_spy_vs_rsp.png",
+    "3.3": "chart_3_3_buffett_indicator.png",
+    "3.4": "chart_3_4_treemap.png",
+    "4.5": "chart_4_5_macro_dashboard.png",
+    "5.1": "chart_5_1_ai_mentions.png",
+    "5.2": "chart_5_2_hype_vs_specificity.png",
+    "ML.1": "chart_ml_1_regime_probabilities.png",
+    "ML.2": "chart_ml_2_dtw_similarity.png",
+    "ML.3": "chart_ml_3_shap_summary.png",
+    "ML.4": "chart_ml_4_shap_waterfall.png",
+}
+
+
 def chart_placeholder(slide, left, top, width, height, label="[Chart Placeholder]"):
-    """Add a rounded rect placeholder where a chart image will be inserted."""
+    """Insert chart image if available, otherwise show placeholder box."""
+    # Try to find a matching chart PNG
+    for chart_id, filename in CHART_FILE_MAP.items():
+        if f"Chart {chart_id}" in label or f"chart_{chart_id.replace('.', '_')}" in label.lower():
+            img_path = CHART_DIR / filename
+            if img_path.exists():
+                slide.shapes.add_picture(str(img_path), left, top, width, height)
+                return
+            break
+
+    # Also try direct filename matching from the label
+    for filename in CHART_DIR.glob("*.png") if CHART_DIR.exists() else []:
+        fname_lower = filename.stem.lower()
+        # Extract chart ID from label like "[Chart 1.1 — ...]"
+        import re
+        match = re.search(r'chart[_ ](\d+[._]\d+)', label.lower().replace(' ', '_'))
+        if match:
+            chart_num = match.group(1).replace('.', '_')
+            if chart_num in fname_lower:
+                slide.shapes.add_picture(str(filename), left, top, width, height)
+                return
+
+    # Fallback: gray placeholder box
     shape = add_shape_box(slide, left, top, width, height,
                           fill_color=RGBColor(0x0D, 0x11, 0x17),
                           border_color=DARK_GRAY)
