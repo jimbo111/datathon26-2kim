@@ -633,7 +633,7 @@ def chart_2_1_pe_trajectory(
         xaxis_title="Quarters Since Cycle Breakout",
         yaxis_title="Trailing P/E Ratio",
     ))
-    fig.update_yaxes(type="log", tickformat=".0f")
+    fig.update_yaxes(type="log", tickformat=".0f", range=[0, 2.7])  # log scale: 1 to ~500
 
     return _save_chart(fig, "chart_2_1_pe_trajectory")
 
