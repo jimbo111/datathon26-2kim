@@ -120,7 +120,7 @@ def download_places() -> pd.DataFrame:
     measures_str = "','".join(PLACES_MEASURES)
     where = (
         f"measureid IN ('{measures_str}') "
-        f"AND data_value_type='Age-adjusted prevalence'"
+        f"AND data_value_type='Crude prevalence'"
     )
 
     frames = []
